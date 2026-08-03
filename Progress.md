@@ -4,16 +4,16 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 設計 ✅、步驟 1–2 ✅、**掛鉤 A/B ✅ + 上下鍵切換解讀 ✅**（已裝機，Ben 實測：純中文長句無誤切、英文自動轉換正常，2026-08-03）
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 設計 ✅、步驟 1–2 ✅、掛鉤 A/B ✅、**掛鉤 C ✅ + 數字直打修正 ✅（Ben 實測通過，2026-08-03）——Phase 2 完成**
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
 - **下個 session 待辦**：
-  1. **掛鉤 C**（空白歧義 Policy v0 + 切換鍵定案）——上下鍵切換的雙向轉換路徑已打通（KeyHandler.mm 的 manual interpretation toggle 區塊），可直接複用；Tab 在組字中已有切換候選字用途，最終按鍵配置屆時再定。
-  2. Preferences 面板加開關 UI（底層 pref `SmartMixedModeEnabled` 已存在，預設關，目前用 defaults 開）。
+  1. Preferences 面板加開關 UI（底層 pref `SmartMixedModeEnabled` 已存在，預設關，目前用 defaults 開）→ 交給 Opus。
 - **已知 bug**：無
 - **已知限制（v1 刻意保留）**：
-  - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，掛鉤 C 之後再評估。
+  - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，Phase 3 再評估。
   - 游標不在行尾時智慧轉換自動停用。
   - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
+  - 空白定案後的 ↑ 切換只在「下一鍵之前」有效；打了其他鍵（或 Enter commit）就定案，commit 後反悔是 Phase 3 題目。
 
 ## 模型分工表（Ben 用：session 該叫誰）
 
@@ -21,14 +21,42 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 | 順序 | 工作 | 模型 |
 |---|---|---|
-| 下一次 | 掛鉤 C：空白歧義 Policy v0 + 切換鍵定案 | **Fable 5** |
-| 之後 | Preferences 面板開關 UI | Opus |
+| 下一次 | Preferences 面板開關 UI | Opus |
 | Phase 3 | 誤判修正 UX（commit 後反悔、tooltip） | **Fable 5** |
 | Phase 3 | 使用者自訂英文詞庫 | Opus |
 | Phase 3/4 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus |
 | Phase 4 | 詞典換 SCOWL + 重跑準確率 | Opus |
 | Phase 4 | 簽章公證 pkg + 發佈頁 | Opus |
 | 隨時 | 文件、小修、建置裝機 | Opus |
+
+## 掛鉤 C 完成（2026-08-03，第五次 session；Ben 實測通過，含數字直打）
+
+**與設計文件 §2 掛鉤 C 的重大偏離（資料驅動，之後以本節為準）：**
+
+1. **空白歧義判中文，不判英文**。設計文件的 Policy v0「模糊時判英文」只量了英文側（0.061%）；本次用 McBopomofo 詞頻資料補量中文側，「模糊判英文」會誤殺 **2.69% 的中文音節**（一=u 佔 1.4%、因=up 0.3%、詩=g、高=el、資=y……），因為 google-10000 詞典混入大量單字母與雜訊詞條（i/t/g/y/al/co/el…）。乘上 90:10 使用比，中文優先的總代價（≈0.19%）比英文優先（≈2.4%）低一個數量級。且「因」常出現在「因為」等詞中間被空白斷開，判英文會直接打斷組字。英文側真正的高頻犧牲者只有 so/go/no/uk——其中 no/uk 是罕見音節照判英文，so/go 的一聲 unigram 不存在、掛鉤 B 本來就會轉英文，**實際只剩 "up" 一個常用英文字預設輸給「因」**，靠 ↑ 切換兜底。
+2. **切換鍵定案：↑（Up）**，不用 Tab。組字中 Tab 已是候選字循環、↓ 是開候選字視窗（空白定案後這功能必須保留），↑ 在橫排組字狀態原本就是被吸收的 no-op（`absorbedArrowKey`），是唯一免費的鍵。**pending token 的切換也從「↑↓ 皆可」改為只有 ↑**（一鍵一語意；↓ 恢復原版行為）。直排模式（useVerticalMode）↑ 是游標鍵，切換功能整個停用。
+
+實作內容：
+
+- **掛鉤 C**（KeyHandler.mm，composeReading 內 hasUnigrams 檢查之前）：空白/Enter 以一聲收尾 token 時，問分類器 `verdictForKeys:followedBySpace:YES`——english（罕見音節撞常用英文字如 "no"=ㄙㄟ、或音節表外鍵序如 "1"=單獨ㄅ）→ 轉英文（空白＝插字面空白繼續組字；Enter＝直接 commit）；chinese/ambiguous → 照常組字。附帶效益：`1`/`a`/`q` 等單獨聲母鍵+空白現在出字面（原版會出注音符號字典項 ㄅ…），打數字更順。
+- **空白定案記錄 + ↑ 切換**：空白收尾的 token（不論判中判英）記下原始鍵序；緊接著按 ↑ 可在「一個組好的音節」↔「字面鍵+空白」之間來回切換（因↔up␣、㩙↔no␣、ㄅ↔1␣）。記錄在下一個非 ↑ 鍵、clear()、commit 時失效。判英文但注音側無 unigram（如 so/go/uk）沒有另一解讀，不設記錄。
+- **tooltip 提示**：ambiguous 判中文時（如 up→因）與罕見音節判英文可切回時（如 no），組字區 tooltip 顯示「↑ 切換為「…」」；切換後顯示反向提示。字串 v1 直接寫中文，rebrand 時再進在地化。
+- **Bridge**：`SmartClassifierBridge.verdict(forKeys:followedBySpace:)` 新入口，log 帶 `+ space` 標記。
+- **數字直打修正**（Ben 實測回報 654321/34455 打不出來，當場修）：問題根源是掛鉤 A 對「token 開頭的聲調鍵（3/4/6/7）」一律跳過 smart 管線（原意是保護 Issue 753 改前字聲調）。改為**只在改聲調真的適用時才跳過**（`allowChangingPriorTone` 偏好開啟＋游標前是真實注音字；此偏好預設關）——其餘情況聲調鍵開頭的鍵序進分類器，判 english（聲調開頭不可能是注音）自動轉字面數字。`654321`、`34455`、`因為`後直接接`34455` 都能直打。**殘留限制**：開頭是 5/1/2/8/9/0（ㄓㄅㄉㄚㄞㄢ）的數字串仍中文優先——`54`→至（5 還 pending 時可按 ↑ 轉字面再續打）、`10`+空白→班（空白後按 ↑ 切成 `10 `）；這是真歧義（它們就是合法注音鍵序），v1 靠 ↑ 兜底。
+- SmartSwitchKit 零改動（policy 在 IME 層），36 測試全過；fork debug build 成功並已裝機（`~/Library/Input Methods/McBopomofo.app`，IME 程序已結束、下次選用時以新版啟動）。
+- **改動檔案**（vendor 分支 `smart-mixed-mode`）：KeyHandler.mm（掛鉤 C、空白定案記錄 ivars、↑ 切換、記錄失效點、聲調鍵開頭數字轉字面）、SmartClassifierBridge.swift（followedBySpace 入口）。
+- policy 量測工具：臨時 scratch script（用 data/google-10000-english.txt + vendor data.txt 詞頻），結論已完整記錄於上，未進 repo。
+
+**Ben 驗收清單**（開著 log：`/usr/bin/log stream --predicate "subsystem == 'org.openvanilla.inputmethod.McBopomofo' AND category == 'SmartSwitch'"`）：
+
+1. `up`+空白 → 因 + tooltip；按 ↑ → `up `；再按 ↑ → 因。空白後按 ↓ 仍開候選字視窗（音/陰…）。
+2. `no`+空白 → `no `（罕見音節判英文）+ tooltip；按 ↑ → 㩙。
+3. `u`+空白 → 一（照常）；`t`+空白 → 吃；`el`+空白 → 高——**高頻中文不受影響**。
+4. `so`+空白、`go`+空白 → 字面英文（掛鉤 B/C，無 ↑ 切換）。
+5. `1`+空白 → `1 `（新行為）；按 ↑ → ㄅ（要打注音符號的後路）。
+6. `因為`（u p 空白 w p 4）→ 照常組出因為；純中文長句無誤切；`hello` 自動轉英文照舊。
+7. pending token（如單獨 `5`）只有 ↑ 能切 ㄓ↔5，↓ 不再切換。
+8. `654321`、`34455`、`因為34455` → 數字直接出（聲調鍵開頭）；`54` 仍出 至、`10`+空白仍出 班（可 ↑ 切換）——這兩類是合法注音鍵序，屬預期行為。
 
 ## 掛鉤 A/B 完成（2026-08-03，第四次 session）
 
