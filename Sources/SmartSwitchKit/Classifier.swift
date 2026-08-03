@@ -56,8 +56,59 @@ public struct Classifier {
 
         let lettersOnly = token.allSatisfy { $0.isLetter }
         if lettersOnly, lexicon.contains(token.lowercased()) {
+            // A rare/literary syllable loses to a common English word: "no" is
+            // ㄙㄟ only for 㩙, so the English reading wins outright. Syllables
+            // are still returned so the UI can offer the Chinese reading as
+            // the alternate interpretation.
+            if syllables.contains(where: \.isRare) {
+                return Result(verdict: .english, syllables: syllables)
+            }
             return Result(verdict: .ambiguous, syllables: syllables)
         }
         return Result(verdict: .chinese, syllables: syllables)
+    }
+
+    /// Per-keystroke verdict for the IME's smart mixed mode.
+    public enum PrefixVerdict: Equatable {
+        /// Could still become a Bopomofo composition — keep feeding keys.
+        case undecidedPrefix
+        case chinese([Syllable])
+        case english
+        /// Complete Bopomofo composition that is also an English lexicon word.
+        case ambiguous([Syllable])
+    }
+
+    /// Incremental classification of the raw keys typed so far in one token.
+    ///
+    /// Call with `followedBySpace: false` on every printable key; `.english`
+    /// means no continuation can be Bopomofo (the conversion trigger for the
+    /// IME's hook A). Call with `followedBySpace: true` when the space key
+    /// arrives (hook C) for the final chinese/english/ambiguous decision.
+    public func classifyPrefix(keys: String, followedBySpace: Bool = false) -> PrefixVerdict {
+        guard !keys.isEmpty else { return .undecidedPrefix }
+
+        if keys.contains(where: { $0.isUppercase }) {
+            return .english
+        }
+
+        if followedBySpace {
+            let result = classify(token: keys, followedBySpace: true)
+            switch result.verdict {
+            case .chinese: return .chinese(result.syllables ?? [])
+            case .ambiguous: return .ambiguous(result.syllables ?? [])
+            case .english: return .english
+            }
+        }
+
+        switch ZhuyinParser.parsePrefix(keys: keys, mode: mode) {
+        case .impossible:
+            return .english
+        case .prefix:
+            return .undecidedPrefix
+        case .complete(let syllables):
+            // A tone key (space aside) is a digit, so a complete composition
+            // can never be an English lexicon word — no ambiguity mid-token.
+            return .chinese(syllables)
+        }
     }
 }

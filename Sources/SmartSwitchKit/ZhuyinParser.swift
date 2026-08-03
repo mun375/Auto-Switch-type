@@ -16,6 +16,11 @@ public struct Syllable: Equatable {
         let toneMarks = [1: "", 2: "ˊ", 3: "ˇ", 4: "ˋ", 5: "˙"]
         return (initialC ?? "") + rime + (toneMarks[tone] ?? "")
     }
+
+    /// Attested only in rare/literary readings (see `SyllableTable.rareSyllables`).
+    public var isRare: Bool {
+        SyllableTable.isRare(initial: initialC ?? "", rime: rime)
+    }
 }
 
 public enum ParseMode {
@@ -84,5 +89,71 @@ public enum ZhuyinParser {
             guard appendFirstToneIfMissing, close(tone: 1) else { return nil }
         }
         return syllables.isEmpty ? nil : syllables
+    }
+
+    /// Incremental (per-keystroke) verdict on a key sequence.
+    public enum PrefixState: Equatable {
+        /// Every syllable closed by a tone key; the token is a full Bopomofo
+        /// composition as typed (more syllables may still follow).
+        case complete([Syllable])
+        /// Ends in an open (toneless) syllable that some attested syllable can
+        /// still complete — keep feeding keys.
+        case prefix(completed: [Syllable])
+        /// No continuation can make this a Bopomofo composition.
+        case impossible
+    }
+
+    /// Judges whether `keys` is / can still become a Bopomofo composition,
+    /// without waiting for the closing tone key. In strict mode a partial
+    /// syllable is rejected as soon as no attested syllable can complete it
+    /// (e.g. "hi" = ㄘㄛ dies on the second key, tone never needed).
+    public static func parsePrefix(keys: String, mode: ParseMode = .strict) -> PrefixState {
+        var syllables: [Syllable] = []
+        var current = Syllable(tone: 0)
+        var hasSymbol = false
+        var stage = 0  // 0=start, 1=initial, 2=medial, 3=final
+
+        for ch in keys {
+            guard let sym = DachenLayout.map[ch] else { return .impossible }
+            switch sym.category {
+            case .initialConsonant:
+                guard stage < 1 else { return .impossible }
+                current.initialC = sym.bopomofo
+                stage = 1
+                hasSymbol = true
+            case .medial:
+                guard stage < 2 else { return .impossible }
+                current.medial = sym.bopomofo
+                stage = 2
+                hasSymbol = true
+            case .final:
+                guard stage < 3 else { return .impossible }
+                current.final = sym.bopomofo
+                stage = 3
+                hasSymbol = true
+            case .tone:
+                guard hasSymbol else { return .impossible }
+                current.tone = sym.tone!
+                if mode == .strict,
+                    !SyllableTable.isValid(initial: current.initialC ?? "", rime: current.rime)
+                {
+                    return .impossible
+                }
+                syllables.append(current)
+                current = Syllable(tone: 0)
+                hasSymbol = false
+                stage = 0
+            }
+            if hasSymbol, mode == .strict,
+                !SyllableTable.canStillMatch(
+                    initial: current.initialC ?? "", partialRime: current.rime)
+            {
+                return .impossible
+            }
+        }
+
+        return hasSymbol || syllables.isEmpty
+            ? .prefix(completed: syllables)
+            : .complete(syllables)
     }
 }

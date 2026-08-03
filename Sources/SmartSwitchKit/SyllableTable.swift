@@ -83,4 +83,36 @@ public enum SyllableTable {
     public static func isValid(initial: String, rime: String) -> Bool {
         validSyllables.contains("\(initial)|\(rime)")
     }
+
+    public static func isRare(initial: String, rime: String) -> Bool {
+        rareSyllables.contains("\(initial)|\(rime)")
+    }
+
+    /// Every "initial|rimePrefix" for each prefix of each valid rime (empty
+    /// prefix and full rime included). Lets the incremental parser reject a
+    /// partial syllable as soon as no attested syllable can complete it, e.g.
+    /// ㄘㄧ… is dead on the second key because no ㄘㄧ* syllable exists.
+    public static let validPrefixes: Set<String> = {
+        var set = Set<String>()
+        for entry in validSyllables {
+            let bar = entry.firstIndex(of: "|")!
+            let initial = entry[..<bar]
+            let rime = entry[entry.index(after: bar)...]
+            var prefix = ""
+            set.insert("\(initial)|")
+            for ch in rime {
+                prefix.append(ch)
+                set.insert("\(initial)|\(prefix)")
+            }
+        }
+        return set
+    }()
+
+    /// Whether some attested syllable starts with this partial (initial +
+    /// partial rime). Rimes are at most medial+final, and medials never appear
+    /// as bare finals, so prefix membership is exact — a fully-formed rime only
+    /// matches itself.
+    public static func canStillMatch(initial: String, partialRime: String) -> Bool {
+        validPrefixes.contains("\(initial)|\(partialRime)")
+    }
 }

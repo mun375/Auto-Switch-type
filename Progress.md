@@ -4,13 +4,23 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅ 完成（debug build 已安裝、註冊、Ben 實測打字正常，2026-08-03）、Phase 2 設計 ✅
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 設計 ✅、Phase 2 步驟 1–2 ✅（parsePrefix API + log-only bridge 已裝機、Ben 實測 log 判斷正確，2026-08-03）
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
-- **下個 session 待辦**（Phase 2 開工，順序見 docs/smart-mixed-mode-design.md §4）：
-  1. SmartSwitchKit 新增 `parsePrefix` 增量判斷 API + 單元測試（含 rareSyllables 降權）
-  2. fork 內掛 SmartSwitchKit local package + `SmartClassifierBridge`，先 log-only 不改行為，用 Console.app 對照實際打字驗證分類器
-  3. 之後才動 KeyHandler 行為（掛鉤 A/B → C，見設計文件）
+- **下個 session 待辦**（Ben 已確認基礎足夠，直接開工）：
+  1. **掛鉤 A/B**（設計文件 §2）：KeyHandler 加 `_rawKeyBuffer`、新狀態 `InputState.SmartEnglish`、BPMF 鍵前分類 + hasUnigrams 失敗轉換。v1 先限定游標在行尾；Esc/還原路徑優先做好。這是全專案風險最高的一步（動 C++ grid 回退）。
+  2. 掛鉤 C（空白歧義 + Tab 切換）。
+  3. Preferences 開關（預設關）。
 - **已知 bug**：無
+
+## Phase 2 步驟 1–2 完成（2026-08-03，第三次 session）
+
+- **`parsePrefix` 增量 API**：`ZhuyinParser.parsePrefix` 逐鍵判斷 complete/prefix/impossible，靠新的 `SyllableTable.validPrefixes`（所有合法音節的前綴集合）在聲調鍵之前就能剔除不可能的鍵序（"hi"＝ㄘㄛ、"hel" 都在第二鍵判定英文）。`Classifier.classifyPrefix(keys:followedBySpace:)` 是掛鉤 A（逐鍵）與掛鉤 C（空白定案）的單一入口。
+- **rareSyllables 降權已實作**：罕見音節撞常用英文字（"no"＝ㄙㄟ、"uk"＝ㄧㄜ）→ 判英文，但保留注音解讀（供之後 Tab 切換）。含明確聲調鍵（如 "no4"）不受影響照判中文。
+- **測試 15 → 36 全過**；準確率重跑持平（整體 98.82%、英文側 Zipf 加權 0.061%）。
+- **內建詞典**：`Sources/SmartSwitchKit/Resources/english-top3000.txt`（google-10000-english 前 3000，Policy v0 同規格）以 SPM resource 打包，`Lexicon.top3000` 載入。⚠️ google-10000-english 的資料授權不明確，Phase 4 公開前要確認或換來源（SCOWL）。
+- **log-only bridge 已裝機驗證**：SmartSwitchKit 以 local package 掛進 fork（pbxproj 手動接線，package platforms 降到 macOS 12 配合部署目標）；`Source/SmartClassifierBridge.swift` 鏡射鍵序、逐鍵 log 判斷，不改任何行為；`InputMethodController.handle(event:)` 只加一行。Ben 實測：中文詞全判對、不合文法鍵序中途就標 english——管線驗證通過。
+- **fork 修改保存**：vendor/McBopomofo 在本機分支 `smart-mixed-mode` commit（改了 pbxproj、InputMethodController.swift、新增 SmartClassifierBridge.swift）。vendor 仍 gitignored、無遠端；正式 fork repo 結構待掛鉤 A/B 穩定後再定。
+- **除錯備忘**：Xcode 26 debug build 的主程式碼在 `Contents/MacOS/McBopomofo.debug.dylib`（主執行檔只是 stub），驗證符號要看 dylib。zsh 下 `log` 是內建指令，查系統 log 要用 `/usr/bin/log`。看判斷：`/usr/bin/log stream --predicate "subsystem == 'org.openvanilla.inputmethod.McBopomofo' AND category == 'SmartSwitch'"`。
 
 ## Phase 1 完成 + Phase 2 設計（2026-08-03，第二次 session）
 
