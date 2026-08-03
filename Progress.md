@@ -4,13 +4,50 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 設計 ✅、Phase 2 步驟 1–2 ✅（parsePrefix API + log-only bridge 已裝機、Ben 實測 log 判斷正確，2026-08-03）
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 設計 ✅、步驟 1–2 ✅、**掛鉤 A/B ✅ + 上下鍵切換解讀 ✅**（已裝機，Ben 實測：純中文長句無誤切、英文自動轉換正常，2026-08-03）
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
-- **下個 session 待辦**（Ben 已確認基礎足夠，直接開工）：
-  1. **掛鉤 A/B**（設計文件 §2）：KeyHandler 加 `_rawKeyBuffer`、新狀態 `InputState.SmartEnglish`、BPMF 鍵前分類 + hasUnigrams 失敗轉換。v1 先限定游標在行尾；Esc/還原路徑優先做好。這是全專案風險最高的一步（動 C++ grid 回退）。
-  2. 掛鉤 C（空白歧義 + Tab 切換）。
-  3. Preferences 開關（預設關）。
+- **下個 session 待辦**：
+  1. **掛鉤 C**（空白歧義 Policy v0 + 切換鍵定案）——上下鍵切換的雙向轉換路徑已打通（KeyHandler.mm 的 manual interpretation toggle 區塊），可直接複用；Tab 在組字中已有切換候選字用途，最終按鍵配置屆時再定。
+  2. Preferences 面板加開關 UI（底層 pref `SmartMixedModeEnabled` 已存在，預設關，目前用 defaults 開）。
 - **已知 bug**：無
+- **已知限制（v1 刻意保留）**：
+  - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，掛鉤 C 之後再評估。
+  - 游標不在行尾時智慧轉換自動停用。
+  - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
+
+## 模型分工表（Ben 用：session 該叫誰）
+
+原則：**動 `KeyHandler.mm`／C++ 組字引擎／判斷邏輯設計 → Fable 5；UI 接線、資料處理、文件、打包 → Opus**。Opus session 若遇到輸入法 crash／打字行為異常的除錯，停下換 Fable 5 接手。
+
+| 順序 | 工作 | 模型 |
+|---|---|---|
+| 下一次 | 掛鉤 C：空白歧義 Policy v0 + 切換鍵定案 | **Fable 5** |
+| 之後 | Preferences 面板開關 UI | Opus |
+| Phase 3 | 誤判修正 UX（commit 後反悔、tooltip） | **Fable 5** |
+| Phase 3 | 使用者自訂英文詞庫 | Opus |
+| Phase 3/4 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus |
+| Phase 4 | 詞典換 SCOWL + 重跑準確率 | Opus |
+| Phase 4 | 簽章公證 pkg + 發佈頁 | Opus |
+| 隨時 | 文件、小修、建置裝機 | Opus |
+
+## 掛鉤 A/B 完成（2026-08-03，第四次 session）
+
+實作與設計文件 §2 有兩個重要偏離（都是降風險，之後讀設計文件要以本節為準）：
+
+1. **token 生命週期＝未完成音節**：每完成一個音節（composeReading 成功）就重置 `_rawKeyBuffer`。轉換時所有鍵都還在 `_bpmfReadingBuffer`，**不需要回退 grid**——原設計的 `deleteReadingBeforeCursor` 回退路徑整個免掉。副作用：`classifyPrefix` 對「完成音節+英文尾」整串判 english 的語意問題也一併消失。
+2. **沒有新增 `InputState.SmartEnglish`**：英文字以 LM 內建 reading 逐鍵插入 grid（`_letter_X`／`_numpad_N`／`_half_punctuation_*`）+ `overrideCandidate` 鎖定字元。顯示、Backspace、游標、Enter commit 全部沿用 Inputting 既有機制。
+
+其他實作要點：
+
+- **掛鉤 A**：BPMF 處理前，printable 鍵先進 `_rawKeyBuffer` 問分類器；impossible → 清 bpmf buffer、逐鍵插入字面 reading、`_smartTokenEnglish = YES`。僅限 Standard（大千）鍵盤配置 + 游標在行尾。token 鍵集合＝字母/數字/`,./;-`（其他標點不進 smart 管線，保持中文標點行為）。空白/3/4/6/7 在 token 開頭視為聲調鍵跳過（保護 Issue 753 前字改聲調功能）。
+- **掛鉤 B**：composeReading 的 hasUnigrams 失敗 → 轉英文而非 beep（捕捉聲調層缺字，如 "no3"）。觸發鍵是空白→插入空白 reading 繼續組字；Enter→直接 commit。
+- **英文 token 中的空白**：LM 對 `" "` reading 有特殊處理（McBopomofoLM.cpp:140），插入字面空白、組字繼續，Enter 才送出。
+- **上下鍵切換解讀**（Ben 提的需求，當場加）：pending token 按 ↑/↓ 在注音↔字面鍵之間切換（`5`＝ㄓ↔5、`so`＝ㄋㄟ↔so）；已自動判英文的（鍵序非合法注音）不可切回。字面→注音的回退＝pop `_rawKeyBuffer.size()` 個 grid reading + 重餵 combineKey，這就是掛鉤 C 需要的雙向路徑。
+- **資料陷阱（重要）**：`,` `.` `;` `/` `-` 的半形 reading 在 BPMFPunctuations.txt 以 **shift 字元**命名（`.` → `_half_punctuation_Standard_>`），通用 `_half_punctuation_<char>` 查找會落空導致轉換丟字（"x.com"→"xcom"），已用明確對應表修掉。
+- **重置點**：clear()、composeReading 成功、Backspace（英文 token 逐鍵同步 pop）、Esc、左右/Home/End 游標移動、setInputMode。同步不變式：undecided token 時 rawKeys 與 bpmf buffer 鍵數 1:1（desync 時跳過 smart 自癒）。
+- **開關**：`defaults write org.openvanilla.inputmethod.McBopomofo SmartMixedModeEnabled -bool true`（已開）。關掉即回到原版行為。
+- 36 測試全過；Ben 實測：純中文長句無誤切、hello/大寫/x.com/Backspace 正常。
+- **改動檔案**（vendor 分支 `smart-mixed-mode`）：KeyHandler.mm（ivars、掛鉤 A/B、切換、重置點）、Preferences.swift（smartMixedModeEnabled）、SmartClassifierBridge.swift（改寫為 @objc verdict API，observer 移除）、InputMethodController.swift（移除 log-only 呼叫）。
 
 ## Phase 2 步驟 1–2 完成（2026-08-03，第三次 session）
 
