@@ -4,14 +4,21 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅ 完成、Phase 1 編譯驗證 ✅（2026-08-03）
+- **階段**：Phase 0 ✅、Phase 1 ✅ 完成（debug build 已安裝、註冊、Ben 實測打字正常，2026-08-03）、Phase 2 設計 ✅
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
-- **下個 session 待辦**：
-  1. 安裝編譯好的小麥注音到系統實測（**Ben 已同意**；會在輸入法清單新增項目並重啟輸入法程序，注意單次登入的 kill 次數限制）
-  2. 研究 `Source/InputState.swift` / `KeyHandler.mm`，設計智慧混打模式插入點
-  3. 用 McBopomofo `Source/Data` 的音節資料校正手工音節表
-  4. 分析用常用字表在 scratchpad 會被清掉，必要時重抓：`https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english.txt`
+- **下個 session 待辦**（Phase 2 開工，順序見 docs/smart-mixed-mode-design.md §4）：
+  1. SmartSwitchKit 新增 `parsePrefix` 增量判斷 API + 單元測試（含 rareSyllables 降權）
+  2. fork 內掛 SmartSwitchKit local package + `SmartClassifierBridge`，先 log-only 不改行為，用 Console.app 對照實際打字驗證分類器
+  3. 之後才動 KeyHandler 行為（掛鉤 A/B → C，見設計文件）
 - **已知 bug**：無
+
+## Phase 1 完成 + Phase 2 設計（2026-08-03，第二次 session）
+
+- **安裝**：debug build（3.0/2264, arm64）已複製到 `~/Library/Input Methods/McBopomofo.app`。Ben 三月裝的官方版備份在 `backup/McBopomofo-official-replaced.app`（不進 git；要還原就搬回去）。Ben 日常用內建注音，McBopomofo 原本就未啟用，換版無日常影響。輸入法註冊（TISRegisterInputSource）AI 被權限系統擋，由 Ben 跑 `scripts/register_ime.swift` 完成 → 三個輸入來源全部註冊+啟用成功，**Ben 實測打字/選字/Backspace/Esc 正常**（2026-08-03）。
+- **建置注意（新發現）**：`xcodebuild -scheme McBopomofo` 不可加 `SYMROOT=build` 覆寫——會弄壞 SPM 套件建置（SQLite 模組解析失敗）。用預設 DerivedData 即可，產物在 `~/Library/Developer/Xcode/DerivedData/McBopomofo-*/Build/Products/Debug/`。
+- **音節表校正完成**：與 McBopomofo `BPMFBase.txt`+`BPMFMappings.txt`（429 音節）比對——手工表漏 9 個罕見音節（ㄧㄜ ㄧㄞ ㄅㄧㄤ ㄆㄧㄚ ㄈㄧㄠ ㄋㄨㄣ ㄌㄩㄢ ㄔㄨㄚ ㄙㄟ，已補）、多 3 個詞典沒有的（ㄉㄣ ㄌㄛ ㄎㄟ，已刪）；14 個「單獨聲母」項是注音符號本身的字典項，**刻意不收**（否則單一英文字母全變合法中文）。表格現在 415 音節、與詞典完全一致，比對工具在 `scripts/calibrate_syllables.py`（可重跑，OK/MISMATCH 收尾）。新增 `SyllableTable.rareSyllables`（9 個罕見音節，分類器降權用；注意 ㄙㄟ 鍵序＝"no"）。15 測試全過。
+- **準確率重跑**（字表已改放 `data/`，gitignored）：整體 98.82%（90:10）、英文側 Zipf 加權誤判 0.061%——與校正前持平，罕見音節新增 "no"、"uk" 兩個衝突但可詞頻壓掉。
+- **Phase 2 設計文件**：`docs/smart-mixed-mode-design.md`——KeyHandler 三個掛鉤點（BPMF 鍵前分類、hasUnigrams 失敗＝英文訊號、空白歧義決策）、`_rawKeyBuffer`、`SmartClassifierBridge`、新狀態 `InputState.SmartEnglish`、五步實作順序（先 log-only 驗證再動行為）。
 
 ## Phase 1 編譯驗證（2026-08-03）
 
