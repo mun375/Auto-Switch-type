@@ -4,16 +4,15 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 設計 ✅、步驟 1–2 ✅、掛鉤 A/B ✅、**掛鉤 C ✅ + 數字直打修正 ✅（Ben 實測通過，2026-08-03）——Phase 2 完成**
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」實作完成（2026-08-04，Ben 初步實測 OK，完整驗收清單未全跑）**
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
-- **下個 session 待辦**：
-  1. Preferences 面板加開關 UI（底層 pref `SmartMixedModeEnabled` 已存在，預設關，目前用 defaults 開）→ 交給 Opus。
+- **下個 session 待辦**：Ben 實測 commit 後反悔（驗收清單見下）；通過後 Phase 3 下一項「使用者自訂英文詞庫」（Opus）。
 - **已知 bug**：無
 - **已知限制（v1 刻意保留）**：
   - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，Phase 3 再評估。
   - 游標不在行尾時智慧轉換自動停用。
   - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
-  - 空白定案後的 ↑ 切換只在「下一鍵之前」有效；打了其他鍵（或 Enter commit）就定案，commit 後反悔是 Phase 3 題目。
+  - 空白定案後的 ↑ 切換在「下一鍵之前」有效；**Enter commit 後仍可再按 ↑ 反悔一次（2026-08-04 新增，可連按來回切換）**，但打了其他鍵就真正定案。commit 中間位置的 token（早已被後續按鍵定案者）不可反悔。
 
 ## 模型分工表（Ben 用：session 該叫誰）
 
@@ -21,13 +20,48 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 | 順序 | 工作 | 模型 |
 |---|---|---|
-| 下一次 | Preferences 面板開關 UI | Opus |
-| Phase 3 | 誤判修正 UX（commit 後反悔、tooltip） | **Fable 5** |
-| Phase 3 | 使用者自訂英文詞庫 | Opus |
+| ✅ 2026-08-04 | 誤判修正 UX（commit 後反悔、tooltip） | Fable 5（已完成，待實測） |
+| 下一次 | 使用者自訂英文詞庫 | Opus |
 | Phase 3/4 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus |
 | Phase 4 | 詞典換 SCOWL + 重跑準確率 | Opus |
 | Phase 4 | 簽章公證 pkg + 發佈頁 | Opus |
 | 隨時 | 文件、小修、建置裝機 | Opus |
+
+## Phase 3：commit 後反悔完成（2026-08-04，第七次 session；待 Ben 實測）
+
+Phase 2 的 ↑ 切換原本在 Enter commit 時失效；本次讓它**跨過 commit 再活一個按鍵**：Enter 送出後緊接著按 ↑，輸入法會把「剛送出的字尾」在目標 App 裡原地換成另一種解讀（因 ↔ `up `、`no` ↔ 㩙），可連按 ↑ 來回切換；按任何其他鍵（或換 App）就真正定案。
+
+**機制**（安全第一，寧可不動作也不誤改使用者文字）：
+
+- **記錄建立**：兩個 Enter commit 路徑會把「送出的字尾＋另一解讀」存成 post-commit undo 記錄——(1) 空白定案記錄還有效時按 plain Enter（`up`+空白+Enter，含先按過 ↑ 切換再 Enter 的情況）；(2) 掛鉤 C 的 Enter 直接 commit（`no`+Enter，僅 canFlipBack 者）。兩種解讀先在 grid 裡各 render 一次、取**共同前綴之後的差異字尾**（處理詞組重排，如「原因」→「原up 」只換「因」以後）。掛鉤 B（如 hello、no3）無另一解讀，照舊不設記錄。
+- **取代流程**（InputMethodController，新 `InputState.SwappingCommitted`）：以 IMK `selectedRange` 取得游標位置 → `attributedSubstring` **驗證游標前文字與送出的字尾完全一致** → 才 `insertText(replacementRange:)` 原地取代 → 回報 KeyHandler 翻轉記錄（`smartCommitUndoDidApply/DidFail`，同步呼叫）。驗證不過（終端機等不支援 selectedRange 的 App、游標被滑鼠移走、簡繁轉換開啟導致送出文字被轉換）→ 記錄作廢、↑ 放行給 App 當一般游標鍵，**絕不誤改文字**。
+- **↑ 攔截條件**：只攔 plain ↑（無修飾鍵；Shift+↑ 選字、直排模式都不攔），且限 Empty 狀態、smart mode 開啟、記錄有效。一鍵窗口，其他鍵立即失效；`clear()`（換 App、Esc 等）也失效。
+- **殘留風險（已知、機率低）**：commit 後用滑鼠點到別處、且新游標前的文字恰好等於剛送出的字尾、且下一鍵就按 ↑——會誤換那裡的字。因驗證靠文字比對而非絕對位置，IME 在 Empty 狀態收不到滑鼠事件。再按一次 ↑ 可換回來。
+- **改動檔案**（vendor 分支 `smart-mixed-mode`，commit `18987ae`）：KeyHandler.mm（undo ivars、入口記錄存活規則改為「空白記錄在 plain Enter 時轉成 undo 記錄」、↑ 攔截、`_smartToggledSpaceRecordInputtingState` helper 抽取（原空白後 ↑ 切換改用之）、兩個 Enter 路徑、`_smartSetCommitUndoWithCommitted:alternate:` 共同前綴 diff（含 surrogate pair 保護））、KeyHandler.h（DidApply/DidFail 宣告）、InputState.swift（SwappingCommitted）、InputMethodController.swift（swap handler + switch case）、SmartClassifierBridge.swift（undo 成功/被擋 log）。SmartSwitchKit 零改動。
+- **附帶修正**：vendor 測試套件原本有 3 個失敗（本機 `SmartMixedModeEnabled=1` 洩漏進測試環境，是既有問題非本次回歸）——KeyHandlerBopomofoTests 的 setUp/tearDown 現在會保存並強制關閉 smart mode。**125 個 vendor 測試 + 36 個 SmartSwitchKit 測試全過**。
+- Debug build 成功、已裝機（`~/Library/Input Methods/McBopomofo.app`）。Ben 初步實測 OK；驗收清單第 4、7 條（誤攔一般 ↑、終端機安全放行）下次補測。
+- **裝機備忘（session 尾發現）**：build 的 `RegisterWithLaunchServices` 會把 DerivedData 那份也註冊進 LaunchServices，系統可能啟動到建置目錄的舊份——已用 `lsregister -u <DerivedData 路徑>` 解除註冊並重新註冊安裝版。之後每次裝機建議照做。小麥注音三個輸入來源一直是註冊＋啟用狀態，「打開」它=從狀態列輸入法選單選取（可用 TIS API 程式切換，scratch script 手法：`TISSelectInputSource`）。
+
+**Ben 驗收清單**（開 log：`/usr/bin/log stream --predicate "subsystem == 'org.openvanilla.inputmethod.McBopomofo' AND category == 'SmartSwitch'"`，在 TextEdit/備忘錄測）：
+
+1. `up`+空白+Enter → 送出「因」；按 ↑ → 變 `up `；再按 ↑ → 變回「因」；打別的字 → 定案，之後 ↑ 恢復游標鍵。
+2. `no`+Enter → 送出 `no`；按 ↑ → 變 㩙；再按 ↑ → 變回 `no`。
+3. `up`+空白 → 因，先按 ↑ 切成 `up `，再 Enter 送出 → 按 ↑ → 變回「因」（切換過再 commit 也能反悔）。
+4. `因為`（u p 空白 w p 4）+Enter → 送出後按 ↑ **不應有任何反應**（記錄早被 w 鍵定案）、↑ 當一般游標鍵。
+5. `hello`+Enter、`so`+空白+Enter → 按 ↑ 無反應（無另一解讀，↑ 放行）。
+6. 送出「因」後先用滑鼠點到文件其他地方再按 ↑ → 若前面的字不是「因」應無反應（log 會出現 post-commit undo blocked）。
+7. 終端機（Terminal.app）裡 `up`+空白+Enter 後按 ↑ → 文字不變、↑ 正常送出（blocked log）。
+8. 回歸：純中文長句、`x.com`、Backspace、候選字視窗（↓）行為不變。
+
+## Preferences 開關 UI 完成（2026-08-04，第六次 session）
+
+Phase 2 最後一項：`SmartMixedModeEnabled` 從只能 `defaults write` 變成偏好設定面板上的開關。
+
+- **位置**：基本頁籤，兩個鍵盤配置選單之下、選字鍵之上（自成一段，上下各一條 Divider）。標籤「智慧中英混打：」＋勾選框「免切換直接混打中英文」＋下方 caption 說明。
+- **大千限定的處理**：`keyboardLayout != .standard` 時開關 disabled（分類器只模型化大千），caption 換成「此功能目前只支援大千（標準）注音鍵盤配置。」；大千時 caption 是「輸入時自動辨識英文字並直接以字面輸出。判斷不如預期時，按 ↑ 可切換成另一種解讀。」——把 ↑ 這個唯一的救援鍵寫進 UI，不然使用者不會知道。
+- **改動檔案**（vendor 分支 `smart-mixed-mode`，commit `014c3e5`）：PreferencesModel.swift（`smartMixedModeEnabled` + `isSmartMixedModeAvailable`）、PreferencesView.swift（基本頁籤兩個 PreferenceRow）、Preferences.swift（註解更新＋系統報告加一行）、三份 Localizable.strings（Base/en/zh-Hant）。SmartSwitchKit 與 KeyHandler.mm 零改動。
+- **驗證**：build 成功、36 測試全過；截圖確認開／關兩種狀態的排版與文案（切到「倚天」→ 開關變灰、caption 換成限制說明，切回「標準」→ 恢復）；點開關實際寫入 `SmartMixedModeEnabled`（1↔0 來回驗證，最後留在 1）。新版已裝到 `~/Library/Input Methods/McBopomofo.app`。
+- **驗證手法備忘**：偏好設定視窗平常只能從輸入法選單開，UI 截圖不好取。作法是暫時在 `main.swift` 加一個 `showprefs` 參數直接開視窗（用 `MainActor.assumeIsolated` 包住），截完圖再移除——這段**沒有留在 repo**。另外 shell 沒有螢幕錄製權限，`screencapture` 一律失敗，要用 computer-use 的 screenshot（request_access 傳 bundle ID `org.openvanilla.inputmethod.McBopomofo`，因為輸入法不在 /Applications 清單裡）。
 
 ## 掛鉤 C 完成（2026-08-03，第五次 session；Ben 實測通過，含數字直打）
 
