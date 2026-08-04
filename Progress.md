@@ -1,12 +1,14 @@
-# auto-switch-type — Mac 中英文免切換輸入法
+# 免切注音 Switchless（原 auto-switch-type）— Mac 中英文免切換輸入法
 
 macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中英文，輸入法根據打字內容自動判斷要出中文（注音）還是英文。
 
+**產品身分（2026-08-04 定案）**：中文名「免切注音」、英文名 Switchless、App 為 `Switchless.app`、bundle ID `tw.benjiang.inputmethod.Switchless`、使用者資料夾 `~/Library/Application Support/Switchless/`。與官方小麥注音完全獨立，可並存。
+
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過（2026-08-04）**
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過、第三項「改名 rebrand」✅ 已完成待 Ben 實測（2026-08-04）**
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`（private，push 不會觸發任何部署）
-- **下個 session 待辦**：補跑 commit 後反悔驗收清單第 4、7 條；下一項是改名 rebrand（Opus）。
+- **下個 session 待辦**：Ben 實測 rebrand 後的裝機（見下方 rebrand 驗收清單，第一步要在系統設定重新加輸入來源）；補跑 commit 後反悔驗收清單第 4、7 條；之後是 Phase 4（詞典換 SCOWL、簽章公證 pkg + 發佈頁）。
 - **已知 bug**：無
 - **兩個 repo**（都是 private，push 都不會觸發部署）：
   - `git@github.com:mun375/Auto-Switch-type.git` — 主專案（SmartSwitchKit、scripts、文件）。分支 `main`。
@@ -19,7 +21,23 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
   - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
   - 空白定案後的 ↑ 切換在「下一鍵之前」有效；**Enter commit 後仍可再按 ↑ 反悔一次（2026-08-04 新增，可連按來回切換）**，但打了其他鍵就真正定案。commit 中間位置的 token（早已被後續按鍵定案者）不可反悔。
 
+## 新 bundle ID 的輸入法要登出才會出現（2026-08-04，rebrand 後實測）
+
+改名後 `Switchless.app` 裝好了、註冊了，但**系統設定的「+ 加入輸入方式」清單裡完全找不到「免切注音」**。逐項排除後的結論：**macOS 只在登入時掃描 `~/Library/Input Methods` 建立輸入法清單，新的 bundle ID 要登出再登入才會被系統收錄。**
+
+- 排除掉的可能原因（都有實測證據，不用再查）：
+  - Bundle 本身沒問題——TIS 查得到，`Category` / `Type` / `EnableCapable=true` / `Languages=zh-Hant` 與能用的 McBopomofo **逐項相同**，唯一差別是 `Enabled=false`。
+  - Info.plist 格式正確（Xcode 會把我加的 XML 註解剝掉）、圖示可被 ImageIO 解碼、adhoc 簽章驗證通過、無 quarantine。
+  - LaunchServices 只註冊了安裝版一份。
+  - `TISRegisterInputSource` + `TISEnableInputSource` **一律回 0 (noErr) 但不生效**——AI 跑不生效，**Ben 自己跑也不生效**（Phase 1 那次「Ben 跑就成功」是因為當時 bundle ID 早就被系統收錄過，只是重新啟用）。
+  - 重開 System Settings、`lsregister -f` 重新註冊都沒用。
+- 上游 `Source/Installer/AppDelegate.swift` 做的事和我們的腳本完全一樣（register 然後 enable），沒有額外招數；它自己的註解就寫了 macOS 12 以上 `kTISPropertyInputSourceIsEnabled` 可能是 true 但輸入法不在使用者的輸入選單裡——正是這個狀況。上游 README 對「裝了看不到」的說法也是登出再登入。
+- **這是換 bundle ID 的一次性代價**：之後改程式碼沿用同一個 ID 就不會再遇到（前八次 session 都在覆蓋同一個 bundle ID，所以從沒踩到）。
+- **Phase 4 必辦**：發佈頁與 pkg 安裝完成畫面必須明講「第一次安裝請登出再登入」，否則每個新使用者都會以為裝失敗。上游安裝程式有這句提示（`McBopomofo is upgraded, but please log out or reboot…`），我們的發佈流程要保留同等的提示。
+
 ## 輸入法從狀態列選單消失（2026-08-04 診斷 + 修好）
+
+> **rebrand 後補充**：安裝的 App 現在叫 `Switchless.app`、bundle ID `tw.benjiang.inputmethod.Switchless`；`scripts/install_ime.sh` 已同步。本節其餘診斷邏輯不變，把 `McBopomofo.app` 讀成 `Switchless.app` 即可。Xcode 專案名沒改，所以 DerivedData 仍是 `McBopomofo-*`。
 
 Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是註冊失敗，是註冊了三份。**
 
@@ -37,11 +55,75 @@ Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是�
 | 順序 | 工作 | 模型 |
 |---|---|---|
 | ✅ 2026-08-04 | 誤判修正 UX（commit 後反悔、tooltip） | Fable 5（已完成，待實測） |
-| ✅ 2026-08-04 | 使用者自訂英文詞庫 | Opus（已完成，待實測） |
-| 下一次 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus |
+| ✅ 2026-08-04 | 使用者自訂英文詞庫 | Opus（已完成，Ben 實測通過） |
+| ✅ 2026-08-04 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus（已完成，待實測） |
+| 下一次 | 正式 App icon 設計（rebrand 只做了換色佔位） | Opus |
 | Phase 4 | 詞典換 SCOWL + 重跑準確率 | Opus |
-| Phase 4 | 簽章公證 pkg + 發佈頁 | Opus |
+| Phase 4 | 簽章公證 pkg + 發佈頁（含自建更新端點） | Opus |
 | 隨時 | 文件、小修、建置裝機 | Opus |
+
+## Phase 3：改名 rebrand 完成（2026-08-04，第九次 session；待 Ben 實測）
+
+從 McBopomofo 分支變成有獨立身分的產品「**免切注音 / Switchless**」，與官方小麥注音完全獨立、可並存。
+
+**命名決策**（Ben 從三案中選定）：直白派勝出——功能寫在名字上，搜尋友善（會有人搜「mac 注音 不用切換」）。另外兩案是「順打注音 / Glide」（意象派）與「兩全注音 / Duet」（典雅派）。
+
+| 項目 | 值 |
+|---|---|
+| 中文名 | 免切注音（傳統模式為「免切注音（傳統）」） |
+| 英文名 | Switchless |
+| App | `Switchless.app` |
+| bundle ID | `tw.benjiang.inputmethod.Switchless` |
+| 輸入模式 ID | `…Switchless.Bopomofo` / `…Switchless.PlainBopomofo` |
+| 使用者資料夾 | `~/Library/Application Support/Switchless/` |
+| log subsystem | `tw.benjiang.inputmethod.Switchless`（category 仍是 `SmartSwitch`） |
+
+**兩個順帶必修的問題**（不改就是 bug）：
+
+1. **更新檢查會把使用者送去上游**。`UpdateInfoEndpoint` 指向 `mcbopomofo.openvanilla.org`，且 `CheckUpdateAutomatically` 預設 true——不處理的話我們的 App 會跳「有新版小麥注音」把人導到上游下載頁。已移除 Info.plist 兩個 key 與選單「檢查更新…」項，兩處都留了註解說明 Phase 4 自建端點後怎麼還原。
+2. **改 bundle ID = 偏好設定與使用者詞庫全部歸零**，包括 `SmartMixedModeEnabled`——這功能是整個 fork 的重點，裝完卻是關的。已做一次性搬移（見下）。
+
+**一次性搬移**（`UserPhraseLocationHelper.migrateFromLegacyBundleIfNeeded()`，在 `applicationDidFinishLaunching` 最前面呼叫）：
+
+- **偏好設定**：從舊 domain `persistentDomain(forName:)` 讀出來，**只補新 domain 沒有的 key**（改過的設定永遠勝出），寫入後設 `SwitchlessDidMigrateFromMcBopomofo` 標記；標記先寫再搬，半途失敗不會無限重試。
+- **使用者詞庫**：`~/Library/Application Support/McBopomofo/` → `Switchless/`，**複製而非搬移**（還在用官方小麥注音的人不受影響）；目標資料夾一存在就整個跳過，所以不可能覆蓋較新的編輯，每次啟動呼叫都安全。使用者設了自訂路徑時不搬（預設資料夾根本沒用到）。
+- 順序必須是先設定後檔案：檔案搬移要讀 `useCustomUserPhraseLocation`，那是設定搬移的產物。
+
+**內部命名刻意不動**：`McBopomofoInputMethodController`、C++ `McBopomofo::` namespace、`McBopomofoLM`、Xcode target 名、`McBopomofo.xcodeproj`（所以 DerivedData 仍叫 `McBopomofo-*`）。這些使用者看不到，改了是純風險零收益，保留也是對上游的自然致敬。作法是**只覆寫 `PRODUCT_NAME = Switchless` 並固定 `PRODUCT_MODULE_NAME = McBopomofo`**——後者是關鍵，不設的話 Swift 產生的橋接標頭會變 `Switchless-Swift.h`，`LanguageModelManager.mm` 的 `#import "McBopomofo-Swift.h"` 會編不過。`TEST_HOST` 也跟著改成 `Switchless.app/Contents/MacOS/Switchless`。
+
+**在地化的作法**：`Localizable.strings` **只改 value、不動 key**（key 就是 `NSLocalizedString` 的第一個參數，改 key 要同步改所有呼叫端，純風險）。所以檔案裡會看到 `"About McBopomofo…" = "關於免切注音…";` 這種左右不一致，是刻意的。例外是 `ServicesMenu.strings`：它的 key 必須與 Info.plist `NSServices` 的 `NSMenuItem.default` 字面相同，所以那一條 key/value 都改了。
+
+**改動檔案**：
+
+- vendor fork（分支 `smart-mixed-mode`）：`project.pbxproj`、`McBopomofo-Info.plist`、三份 `InfoPlist.strings`、三份 `Localizable.strings`、兩份 `ServicesMenu.strings`、兩份 `MainMenu.xib`、三份 `Credits.rtf`、十份 `template-*.txt`、`KeyHandler.mm`（兩個 InputMode 常數）、`SmartClassifierBridge.swift`（log subsystem）、`InputMethodController.swift`（移除更新選單項）、`Preferences.swift`（資料夾改名 + 搬移）、`AppDelegate.swift`（搬移掛點）、Installer 全套（路徑常數、字串、xib、plist）、`README.markdown`（開頭加分支說明）、14 個圖示檔。
+- 主 repo：`scripts/install_ime.sh`（改為裝 `Switchless.app`，並偵測舊 fork 還在時印出移除指令——但**不自動刪**）、`scripts/register_ime.swift`（新 bundle ID）、新增 `scripts/recolor_icons.py`。
+
+**圖示**：沿用上游造型，只做色相旋轉 214°→168°（深藍 → 墨綠 `(21,104,89)`），飽和度與明度不動，所以所有陰影與抗鋸齒像素一致；灰階像素（字形本身）因 S<0.05 不受影響。目的只是讓兩者在選單列不會長得一模一樣。**這是佔位，正式 icon 另開一輪**（`scripts/recolor_icons.py` 可重跑，之後與上游同步圖示時還用得到）。
+
+**Credits.rtf 重寫**：上游把中文存成 Big5 escape，diff 完全不可讀。改用 `\uNNNN` escape 重新產生（產生器留在 scratchpad，內容已定案不需再跑）。內容是「基於小麥注音 McBopomofo（MIT 授權）」＋三個連結：專案頁面、上游專案、問題回報。**注意：專案頁面連到 private repo，發佈前要改**。
+
+**上游授權處理**：`LICENSE.txt` 原封不動；`NSHumanReadableCopyright`（主程式 + 安裝程式 + 三份 InfoPlist.strings）改成「上游版權 + Switchless 修改版權 + MIT」並列；README 開頭寫明是分支與原作者。`template-*.txt` 裡的上游 wiki 連結保留（檔案格式我們原封繼承，那份手冊是準確的），但加註「上游小麥注音使用手冊（檔案格式與免切注音相同）」，並把範例詞從「小麥注音」換成「免切注音 ㄇㄧㄢˇ-ㄑㄧㄝ-ㄓㄨˋ-ㄧㄣ」——那行會寫進使用者自己的資料檔。
+
+**驗證結果（AI 實際跑過，非推測）**：
+
+- ✅ SmartSwitchKit 42 測試全過、vendor 125 測試全過（測試進程名已是 `Switchless`）。
+- ✅ Debug build 成功；產物 `Switchless.app`，`CFBundleIdentifier` / `TISInputSourceID` = `tw.benjiang.inputmethod.Switchless`、`InputMethodConnectionName` = `Switchless_1_Connection`、`UpdateInfoEndpoint` 確認不存在、zh-Hant 顯示名為「免切注音」。
+- ✅ **搬移端到端實測**：清空新 domain 與新資料夾後啟動一次 → log 出現 `imported 9 setting(s)` 與 `migrated user phrase files from …/McBopomofo to …/Switchless`；`SmartMixedModeEnabled` 確認搬成 1（智慧混打裝完就是開的）；六個詞庫檔全部到位，`smart-english.txt` MD5 與來源一致。
+- ✅ **熱重載在新路徑仍運作**（FSEvent 監看路徑變了，這是真有風險的一項）：加一行 `ai` 存檔 → 六秒內 log 出現 `user English lexicon loaded: 1 word(s)`；驗完已還原原檔並比對 MD5。
+- ✅ 已裝到 `~/Library/Input Methods/Switchless.app`，LaunchServices 只留安裝版（建置目錄那份已解除註冊）。
+- 未跑：實際敲鍵盤打字（AI 無 TextEdit 存取權，只能由 Ben 做）。
+
+**Ben 驗收清單**：
+
+1. **先登出再登入，然後加輸入來源**（換 bundle ID 後系統當它是全新輸入法，而且要登入時才會掃到——見上方專節）：系統設定 → 鍵盤 → 輸入來源「編輯…」→ 左下角 `+` → 繁體中文 → 加入「免切注音」與「免切注音（傳統）」。
+2. 選單列切到「免切注音」，圖示應是**墨綠**色（舊的深藍是 pre-rebrand 那份）。
+3. 打字回歸：純中文長句、`hello`、`up`+空白 → 因、`ai`+空白（詞庫目前是空的，所以會出「摸」——想驗詞庫就先加 `ai` 進去）。
+4. 輸入法選單 → 應**沒有**「檢查更新…」；「免切注音偏好設定」打得開，智慧混打開關應該是**開**的。
+5. 選單「編輯智慧混打英文詞庫」→ 開啟的應是 `~/Library/Application Support/Switchless/smart-english.txt`。
+6. 關於視窗（選單「關於免切注音…」）→ 版權欄應同時有上游與 Switchless 兩行。
+7. 確認無誤後可移除 pre-rebrand 那份（`~/Library/Input Methods/McBopomofo.app`）——**我沒有自動刪**，指令在 `install_ime.sh` 執行完會印出來。舊資料夾 `~/Library/Application Support/McBopomofo/` 建議也留著一陣子當備援。
+
+**備忘**：vendor 測試套件會污染真實的偏好設定 domain（`KeyHandlerBopomofoTests` 的 setUp/tearDown 會寫 `SmartMixedModeEnabled`），現在污染的是 Switchless domain。這次就踩到一次——中止的測試先把新 domain 寫了 0，導致搬移依「不覆蓋既有值」的設計跳過該 key，看起來像搬移失效。**日後驗搬移一定要先清空 domain 再驗**。
 
 ## Phase 3：使用者自訂英文詞庫完成（2026-08-04，第八次 session；Ben 實測通過）
 

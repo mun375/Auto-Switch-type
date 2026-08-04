@@ -1,14 +1,14 @@
 import Carbon
 import Foundation
 
-let path = NSString(string: "~/Library/Input Methods/McBopomofo.app").expandingTildeInPath
+let path = NSString(string: "~/Library/Input Methods/Switchless.app").expandingTildeInPath
 let url = URL(fileURLWithPath: path) as CFURL
 
 let regStatus = TISRegisterInputSource(url)
 print("register status:", regStatus)
 
-// Find McBopomofo input sources (including currently disabled ones)
-let props = [kTISPropertyBundleID as String: "org.openvanilla.inputmethod.McBopomofo"] as CFDictionary
+// Find Switchless input sources (including currently disabled ones)
+let props = [kTISPropertyBundleID as String: "tw.benjiang.inputmethod.Switchless"] as CFDictionary
 guard let list = TISCreateInputSourceList(props, true)?.takeRetainedValue() as? [TISInputSource] else {
     print("no input sources found for bundle id")
     exit(1)
