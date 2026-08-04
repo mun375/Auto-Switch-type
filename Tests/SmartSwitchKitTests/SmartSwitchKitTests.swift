@@ -186,6 +186,60 @@ final class ClassifierTests: XCTestCase {
     }
 }
 
+final class UserEnglishLexiconTests: XCTestCase {
+    /// "ai" = ㄇㄛ¹ (摸) and is not in the built-in top-3000 list, so by default
+    /// it composes Chinese. Listing it makes English win outright.
+    func testUserWordBeatsAValidSyllable() {
+        let plain = Classifier(lexicon: [])
+        XCTAssertEqual(plain.classify(token: "ai", followedBySpace: true).verdict, .chinese)
+
+        let custom = Classifier(lexicon: [], userEnglish: ["ai"])
+        let result = custom.classify(token: "ai", followedBySpace: true)
+        XCTAssertEqual(result.verdict, .english)
+        // The Bopomofo reading survives so ↑ can switch back to it.
+        XCTAssertEqual(result.syllables?.first?.bopomofo, "ㄇㄛ")
+    }
+
+    /// A word in the built-in lexicon is only `.ambiguous`, which hook C
+    /// resolves as Chinese; listing it upgrades the verdict to English.
+    func testUserWordOverridesAmbiguousPolicy() {
+        let policy = Classifier(lexicon: ["up"])
+        XCTAssertEqual(policy.classify(token: "up", followedBySpace: true).verdict, .ambiguous)
+
+        let custom = Classifier(lexicon: ["up"], userEnglish: ["up"])
+        XCTAssertEqual(custom.classify(token: "up", followedBySpace: true).verdict, .english)
+    }
+
+    func testUserWordReachesTheSpaceDelimitedPrefixEntryPoint() {
+        let custom = Classifier(lexicon: [], userEnglish: ["ai"])
+        XCTAssertEqual(custom.classifyPrefix(keys: "ai", followedBySpace: true), .english)
+        // Mid-token the verdict is unchanged: "ai" has no tone key yet.
+        XCTAssertEqual(custom.classifyPrefix(keys: "ai"), .undecidedPrefix)
+    }
+
+    func testEntriesAreCaseInsensitive() {
+        let custom = Classifier(lexicon: [], userEnglish: Lexicon.parseUserList("AI"))
+        XCTAssertEqual(custom.classify(token: "ai", followedBySpace: true).verdict, .english)
+    }
+
+    func testParseUserList() {
+        let text = """
+            # 這是註解
+            ai        # 人工智慧
+              ui
+
+            NP
+            #
+            """
+        XCTAssertEqual(Lexicon.parseUserList(text), ["ai", "ui", "np"])
+    }
+
+    func testParseUserListOnEmptyText() {
+        XCTAssertEqual(Lexicon.parseUserList(""), [])
+        XCTAssertEqual(Lexicon.parseUserList("\n\n   \n"), [])
+    }
+}
+
 final class ClassifierPrefixTests: XCTestCase {
     let classifier = Classifier(lexicon: ["so", "no", "uk", "hello", "the"])
 

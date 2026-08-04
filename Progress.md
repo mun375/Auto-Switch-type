@@ -4,15 +4,27 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」實作完成（2026-08-04，Ben 初步實測 OK，完整驗收清單未全跑）**
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」實作完成（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」實作完成（2026-08-04，待 Ben 實測）**
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
-- **下個 session 待辦**：Ben 實測 commit 後反悔（驗收清單見下）；通過後 Phase 3 下一項「使用者自訂英文詞庫」（Opus）。
+- **下個 session 待辦**：Ben 實測自訂英文詞庫＋補跑 commit 後反悔驗收清單第 4、7 條；通過後 Phase 3/4 下一項是改名 rebrand（Opus）。
 - **已知 bug**：無
+- **⚠️ 未 commit**：本 session 的改動（SmartSwitchKit、vendor fork、scripts/install_ime.sh、本文件）都還在工作區，Ben 說 commit 才 commit。
 - **已知限制（v1 刻意保留）**：
   - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，Phase 3 再評估。
   - 游標不在行尾時智慧轉換自動停用。
   - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
   - 空白定案後的 ↑ 切換在「下一鍵之前」有效；**Enter commit 後仍可再按 ↑ 反悔一次（2026-08-04 新增，可連按來回切換）**，但打了其他鍵就真正定案。commit 中間位置的 token（早已被後續按鍵定案者）不可反悔。
+
+## 輸入法從狀態列選單消失（2026-08-04 診斷 + 修好）
+
+Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是註冊失敗，是註冊了三份。**
+
+- Xcode target 有 `RegisterWithLaunchServices` 建置階段，所以**每次 build 都會把建置目錄那份也註冊進 LaunchServices**，和安裝版共用同一個 bundle ID。當時同時註冊著三個路徑：`~/Library/Input Methods/`、DerivedData、`vendor/McBopomofo/build/Debug/`。
+- 後果：系統實際啟動的是 DerivedData 那份（實測有兩個 McBopomofo 程序在跑），而且 `AppleEnabledInputSources` 裡的小麥注音項目被系統整個丟掉（只剩在 `AppleInputSourceHistory`）——選單自然看不到。
+- **修法**：把非安裝版的路徑 `lsregister -u` 解除註冊、只留 `~/Library/Input Methods/McBopomofo.app` 再 `lsregister -f`。已寫成 `scripts/install_ime.sh`，之後裝機一律跑它。
+- **殘留**：`TISEnableInputSource` 從命令列腳本呼叫**回傳 noErr 但不會寫進系統啟用清單**（跨程序不生效），所以最後一步 Ben 要自己在系統設定裡加：
+  **系統設定 → 鍵盤 → 輸入來源「編輯…」→ 左下角 `+` → 繁體中文 → 小麥注音（含「小麥注音-精簡模式」共兩項）→ 加入**。加完狀態列選單就會出現。
+- 診斷指令備忘：`defaults read com.apple.HIToolbox AppleEnabledInputSources`（系統真正啟用的清單）；`lsregister -dump | grep McBopomofo.app`（看註冊了幾份）。TIS API 自己回報的 `IsEnabled` 只反映呼叫端程序的快取，不可信。
 
 ## 模型分工表（Ben 用：session 該叫誰）
 
@@ -21,11 +33,37 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 | 順序 | 工作 | 模型 |
 |---|---|---|
 | ✅ 2026-08-04 | 誤判修正 UX（commit 後反悔、tooltip） | Fable 5（已完成，待實測） |
-| 下一次 | 使用者自訂英文詞庫 | Opus |
-| Phase 3/4 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus |
+| ✅ 2026-08-04 | 使用者自訂英文詞庫 | Opus（已完成，待實測） |
+| 下一次 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus |
 | Phase 4 | 詞典換 SCOWL + 重跑準確率 | Opus |
 | Phase 4 | 簽章公證 pkg + 發佈頁 | Opus |
 | 隨時 | 文件、小修、建置裝機 | Opus |
+
+## Phase 3：使用者自訂英文詞庫完成（2026-08-04，第八次 session；待 Ben 實測）
+
+Ben 可以自己列一份「這些字一律當英文」的清單，蓋過分類器的預設判斷。
+
+**為什麼需要**（先量了才做）：分類器在「鍵序剛好也是合法注音」時才會出錯，實測掃過一批常見科技詞，真正衝突的只有 7 個——`ai`→摸（ㄇㄛ）、`ui`→唷（ㄧㄛ）、`np`→森（ㄙㄣ）、`yo`→ㄗㄟ，加上原本就 ambiguous 的 `go`/`so`/`up`。其中 **`ai` 最痛**：它有 unigram，掛鉤 B 救不了，打「ai」+空白現在會出「摸」。其餘像 `figma`、`vercel`、`npm` 這種長詞，掛鉤 A 早就判英文了，不需要進詞庫。
+
+**設計**：新增 `Classifier.userEnglish`（獨立於內建 `lexicon`）。差別在**判決強度**——內建詞庫命中只給 `.ambiguous`，而掛鉤 C 的政策是 ambiguous→判中文，所以把字加進內建詞庫是**沒有用的**；`userEnglish` 命中直接回 `.english`。注音解讀照樣回傳，所以 ↑ 切換與 commit 後反悔都能用（打「ai」出 `ai`，按 ↑ 變「摸」）。這也讓使用者能翻掉 `up`→因 這種預設。反方向（強迫某字保持中文）v1 不做：會受影響的只有 `no`/`uk` 兩個罕見音節，需求極低。
+
+- **檔案**：`~/Library/Application Support/McBopomofo/smart-english.txt`，一行一字、`#` 註解、大小寫不拘。放在既有使用者詞庫資料夾，因此**自動沿用**資料夾搬移偏好設定與 FSEvent 監看器——存檔即生效，不必重開輸入法。第一次從選單開啟時才建檔，內容是一段中文說明模板。
+- **選單**：輸入法選單「使用者詞彙」區塊新增「編輯智慧混打英文詞庫」，僅在 `SmartMixedModeEnabled` 開啟且非 plain bopomofo 模式時顯示。三份 Localizable.strings 都加了字串（這次沒有硬寫中文）。
+- **執行緒**：`SmartClassifierBridge.classifier` 從 `let` 改成 `var` + `NSLock`（主執行緒重載 vs 輸入執行緒讀取）。
+- **改動檔案**：SmartSwitchKit — Classifier.swift（`userEnglish` + init 參數 + 判決分支）、Lexicon.swift（`parseUserList`）；vendor fork（分支 `smart-mixed-mode`）— SmartClassifierBridge.swift（新 `SmartEnglishLexicon` 類別、鎖、`reloadUserLexicon`；注意 `load()` 會和 `NSObject.load` 撞名，用 `loadWords()`）、AppDelegate.swift（開檔動作 + 兩處重載掛點）、InputMethodController.swift（選單項 + forwarding + reloadUserPhrases 也重載）、三份 Localizable.strings。KeyHandler.mm 零改動。
+- **驗證**：SmartSwitchKit 42 測試全過（36 → 42，新增 6 個）、vendor 125 測試全過、Debug build 成功並已裝機。
+- **新增 `scripts/install_ime.sh`**：複製建置產物到 `~/Library/Input Methods`，然後把**除了安裝版以外**的所有 McBopomofo.app 從 LaunchServices 解除註冊。以後裝機一律跑這支（見下方「輸入法從選單消失」）。
+
+**Ben 驗收清單**：
+
+1. 狀態列選 小麥注音 → 輸入法選單應出現「編輯智慧混打英文詞庫」（智慧混打開關要是開的）。
+2. 點它 → TextEdit 開啟 `smart-english.txt`，內容是中文說明模板。
+3. 先在 TextEdit 打 `ai`+空白 → 現在會出「摸」。
+4. 在詞庫檔加一行 `ai`、存檔（不要重開輸入法）→ 再打 `ai`+空白 → 出 `ai `；按 ↑ → 變「摸」；再按 ↑ → 變回 `ai `。
+5. 同樣方式加 `up` → `up`+空白 不再出「因」（翻掉預設政策）。
+6. 把該行刪掉存檔 → 行為立刻回復。
+7. log 應出現 `user English lexicon loaded: N word(s)`。
+8. 回歸：純中文長句、`hello`、`x.com`、數字直打不受影響。
 
 ## Phase 3：commit 後反悔完成（2026-08-04，第七次 session；待 Ben 實測）
 
@@ -40,7 +78,7 @@ Phase 2 的 ↑ 切換原本在 Enter commit 時失效；本次讓它**跨過 co
 - **改動檔案**（vendor 分支 `smart-mixed-mode`，commit `18987ae`）：KeyHandler.mm（undo ivars、入口記錄存活規則改為「空白記錄在 plain Enter 時轉成 undo 記錄」、↑ 攔截、`_smartToggledSpaceRecordInputtingState` helper 抽取（原空白後 ↑ 切換改用之）、兩個 Enter 路徑、`_smartSetCommitUndoWithCommitted:alternate:` 共同前綴 diff（含 surrogate pair 保護））、KeyHandler.h（DidApply/DidFail 宣告）、InputState.swift（SwappingCommitted）、InputMethodController.swift（swap handler + switch case）、SmartClassifierBridge.swift（undo 成功/被擋 log）。SmartSwitchKit 零改動。
 - **附帶修正**：vendor 測試套件原本有 3 個失敗（本機 `SmartMixedModeEnabled=1` 洩漏進測試環境，是既有問題非本次回歸）——KeyHandlerBopomofoTests 的 setUp/tearDown 現在會保存並強制關閉 smart mode。**125 個 vendor 測試 + 36 個 SmartSwitchKit 測試全過**。
 - Debug build 成功、已裝機（`~/Library/Input Methods/McBopomofo.app`）。Ben 初步實測 OK；驗收清單第 4、7 條（誤攔一般 ↑、終端機安全放行）下次補測。
-- **裝機備忘（session 尾發現）**：build 的 `RegisterWithLaunchServices` 會把 DerivedData 那份也註冊進 LaunchServices，系統可能啟動到建置目錄的舊份——已用 `lsregister -u <DerivedData 路徑>` 解除註冊並重新註冊安裝版。之後每次裝機建議照做。小麥注音三個輸入來源一直是註冊＋啟用狀態，「打開」它=從狀態列輸入法選單選取（可用 TIS API 程式切換，scratch script 手法：`TISSelectInputSource`）。
+- **裝機備忘（session 尾發現）**：build 的 `RegisterWithLaunchServices` 會把 DerivedData 那份也註冊進 LaunchServices，系統可能啟動到建置目錄的舊份——已用 `lsregister -u <DerivedData 路徑>` 解除註冊並重新註冊安裝版。之後每次裝機建議照做。**（2026-08-04 更新：這個問題後來真的害輸入法從選單消失，已寫成 `scripts/install_ime.sh`，並修正本節「一直是啟用狀態」的說法——見上方「輸入法從狀態列選單消失」。）**
 
 **Ben 驗收清單**（開 log：`/usr/bin/log stream --predicate "subsystem == 'org.openvanilla.inputmethod.McBopomofo' AND category == 'SmartSwitch'"`，在 TextEdit/備忘錄測）：
 

@@ -17,4 +17,20 @@ public enum Lexicon {
         return Set(
             text.split(separator: "\n").map { $0.lowercased() }.filter { !$0.isEmpty })
     }()
+
+    /// Parses a user-maintained word list: one entry per line, `#` starts a
+    /// comment, blank lines ignored. Only the first whitespace-separated field
+    /// of a line counts, so `ai      # 人工智慧` works.
+    ///
+    /// Entries are lowercased because the classifier treats any uppercase key
+    /// as an explicit English signal already.
+    public static func parseUserList(_ text: String) -> Set<String> {
+        var words: Set<String> = []
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.prefix { $0 != "#" }
+            guard let field = line.split(whereSeparator: \.isWhitespace).first else { continue }
+            words.insert(field.lowercased())
+        }
+        return words
+    }
 }

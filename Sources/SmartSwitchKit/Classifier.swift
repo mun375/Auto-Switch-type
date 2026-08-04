@@ -26,10 +26,19 @@ public struct Classifier {
 
     /// English words used for the ambiguity check (lowercase).
     public let lexicon: Set<String>
+    /// User-maintained words that win outright (lowercase). Unlike `lexicon`,
+    /// a hit here is not merely ambiguous: the user has declared that this key
+    /// sequence means the English word, so the verdict is `.english` even when
+    /// the keys form a perfectly good syllable ("ai" is ㄇㄛ = 摸). The Bopomofo
+    /// reading is still returned as the alternate interpretation for ↑.
+    public let userEnglish: Set<String>
     public let mode: ParseMode
 
-    public init(lexicon: Set<String>, mode: ParseMode = .strict) {
+    public init(
+        lexicon: Set<String>, userEnglish: Set<String> = [], mode: ParseMode = .strict
+    ) {
         self.lexicon = lexicon
+        self.userEnglish = userEnglish
         self.mode = mode
     }
 
@@ -54,8 +63,13 @@ public struct Classifier {
             return Result(verdict: .english, syllables: nil)
         }
 
+        let lowercased = token.lowercased()
+        if userEnglish.contains(lowercased) {
+            return Result(verdict: .english, syllables: syllables)
+        }
+
         let lettersOnly = token.allSatisfy { $0.isLetter }
-        if lettersOnly, lexicon.contains(token.lowercased()) {
+        if lettersOnly, lexicon.contains(lowercased) {
             // A rare/literary syllable loses to a common English word: "no" is
             // ㄙㄟ only for 㩙, so the English reading wins outright. Syllables
             // are still returned so the UI can offer the Chinese reading as
