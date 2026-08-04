@@ -6,10 +6,14 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過、第三項「改名 rebrand」✅ 已完成待 Ben 實測（2026-08-04）**
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過、第三項「改名 rebrand」✅ 已裝機運作中（2026-08-04）**。定位轉為自用優先（見下節），Phase 4 無限期延後。
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`（private，push 不會觸發任何部署）
-- **下個 session 待辦**：Ben 實測 rebrand 後的裝機（見下方 rebrand 驗收清單，第一步要在系統設定重新加輸入來源）；補跑 commit 後反悔驗收清單第 4、7 條；之後是 Phase 4（詞典換 SCOWL、簽章公證 pkg + 發佈頁）。
+- **目前執行中**：`~/Library/Input Methods/Switchless.app`，**Release build**（universal，無 debug dylib），已從系統設定加入輸入來源並可正常選用。改名前那份 `McBopomofo.app` 已於 2026-08-04 移除並解除註冊，LaunchServices 現在只剩安裝版一份。
+- **下個 session 待辦（Ben 指定順延）**：
+  1. **rebrand 的打字驗收**——見下方「Ben 驗收清單」第 2–6 條（選單無「檢查更新」、偏好設定面板、關於視窗版權兩行、詞庫路徑指向 Switchless、`up`+空白→因與 ↑ 切換）。**第 1 條「加輸入來源」已完成不必再做。** 這輪裝的是新編的 Release build，所以打字行為值得完整走一次。
+  2. 補跑「commit 後反悔」驗收清單第 4、7 條（誤攔一般 ↑、終端機安全放行）。
 - **已知 bug**：無
+- **殘留物（無害，但知道一下）**：`vendor/McBopomofo/build/Debug/McBopomofo.app` 是 Phase 1 留下的舊建置（**舊 bundle ID**），已解除 LaunchServices 註冊、目前是死的，但它正是當初害輸入法從選單列消失的那類東西。`build/` 被 gitignore，要刪隨時可刪。
 - **兩個 repo**（都是 private，push 都不會觸發部署）：
   - `git@github.com:mun375/Auto-Switch-type.git` — 主專案（SmartSwitchKit、scripts、文件）。分支 `main`。
   - `git@github.com:mun375/Auto-Switch-type-ime.git` — McBopomofo fork（IME 端所有改動）。**在 `vendor/McBopomofo` 裡的 remote 名稱是 `fork`，`origin` 仍指向上游 openvanilla/McBopomofo**（保留給之後 rebase 上游用）。預設分支 `smart-mixed-mode`。
@@ -138,8 +142,8 @@ Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是�
 
 **Ben 驗收清單**：
 
-1. **先登出再登入，然後加輸入來源**（換 bundle ID 後系統當它是全新輸入法，而且要登入時才會掃到——見上方專節）：系統設定 → 鍵盤 → 輸入來源「編輯…」→ 左下角 `+` → 繁體中文 → 加入「免切注音」與「免切注音（傳統）」。
-2. 選單列切到「免切注音」，圖示應是**墨綠**色（舊的深藍是 pre-rebrand 那份）。
+1. ~~**先登出再登入，然後加輸入來源**（換 bundle ID 後系統當它是全新輸入法，而且要登入時才會掃到——見上方專節）：系統設定 → 鍵盤 → 輸入來源「編輯…」→ 左下角 `+` → 繁體中文 → 加入「免切注音」與「免切注音（傳統）」。~~ **✅ 2026-08-04 完成**（登出再登入後才出現，確認了那一節的結論）。
+2. ~~選單列切到「免切注音」，圖示應是**墨綠**色（舊的深藍是 pre-rebrand 那份）。~~ **✅ 完成**；pre-rebrand 那份之後也已移除，現在選單列只有免切注音。
 3. 打字回歸：純中文長句、`hello`、`up`+空白 → 因、`ai`+空白（詞庫目前是空的，所以會出「摸」——想驗詞庫就先加 `ai` 進去）。
 4. 輸入法選單 → 應**沒有**「檢查更新…」；「免切注音偏好設定」打得開，智慧混打開關應該是**開**的。
 5. 選單「編輯智慧混打英文詞庫」→ 開啟的應是 `~/Library/Application Support/Switchless/smart-english.txt`。
