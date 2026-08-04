@@ -8,7 +8,11 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`（private，push 不會觸發任何部署）
 - **下個 session 待辦**：補跑 commit 後反悔驗收清單第 4、7 條；下一項是改名 rebrand（Opus）。
 - **已知 bug**：無
-- **vendor fork 是本機 git、無遠端**：`vendor/McBopomofo` 被 gitignore，分支 `smart-mixed-mode` 的 commit 只存在這台機器上。正式 fork repo 結構待 rebrand 時一併決定；在那之前這台機器的 vendor 目錄弄丟＝所有 IME 端改動弄丟。
+- **兩個 repo**（都是 private，push 都不會觸發部署）：
+  - `git@github.com:mun375/Auto-Switch-type.git` — 主專案（SmartSwitchKit、scripts、文件）。分支 `main`。
+  - `git@github.com:mun375/Auto-Switch-type-ime.git` — McBopomofo fork（IME 端所有改動）。**在 `vendor/McBopomofo` 裡的 remote 名稱是 `fork`，`origin` 仍指向上游 openvanilla/McBopomofo**（保留給之後 rebase 上游用）。預設分支 `smart-mixed-mode`。
+  - `vendor/McBopomofo` 在主 repo 裡仍是 gitignore，兩個 repo 各自獨立 commit／push。**改了 IME 端的東西要記得 `git -C vendor/McBopomofo push fork smart-mixed-mode`。**
+  - 2026-08-04 建立時把原本的 shallow clone `fetch --unshallow` 補成完整歷史（否則 GitHub 拒收），`.git` 從 3.3M 變 85M。上游 MIT 版權聲明原封保留。
 - **已知限制（v1 刻意保留）**：
   - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，Phase 3 再評估。
   - 游標不在行尾時智慧轉換自動停用。
