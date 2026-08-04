@@ -21,6 +21,29 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
   - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
   - 空白定案後的 ↑ 切換在「下一鍵之前」有效；**Enter commit 後仍可再按 ↑ 反悔一次（2026-08-04 新增，可連按來回切換）**，但打了其他鍵就真正定案。commit 中間位置的 token（早已被後續按鍵定案者）不可反悔。
 
+## 定位改為「自用優先、暫不公開」（2026-08-04，Ben 決策）
+
+Ben 決定先把軟體維持在自用狀態，公開發佈無限期延後。這改變的是優先順序，不是工作量。
+
+**因此可以整個拿掉的（只有公開散布才需要）**：
+
+- Developer ID 簽章與公證——ad-hoc 簽章在自己機器上就能跑。
+- 發佈頁、pkg 安裝器、自建更新端點。Installer target 留著但不維護；裝機一律用 `scripts/install_ime.sh`。
+- **詞典換 SCOWL**。原本列 Phase 4 的唯一理由是 google-10000-english 授權不明——那只在公開散布時是問題，自用無關。**這項從路線圖移除**，哪天要公開再撿回來。
+
+**因此反而更該做的（自用比發佈更吃緊的兩件）**：
+
+- **改用 Release build**。輸入法在每個按鍵的路徑上，Debug 是 `-Onone` 的 Swift、未最佳化的 C++ 組字引擎，外加 debug dylib 的間接層。`install_ime.sh` 預設改成裝 Release（`Debug` 或完整路徑可當第一個參數覆寫），裝完會印出這份是 Debug 還是 Release——裝錯是靜默的，代價是整天的打字延遲。
+  - **Release 跑不了測試套件**：`ENABLE_TESTABILITY = YES` 只設在 Debug（上游設定），而測試用 `@testable import McBopomofo`。要在最佳化過的程式碼上跑測試得加一次性旗標 `xcodebuild -configuration Release ENABLE_TESTABILITY=YES test`，不要為此改專案設定。
+  - Release 會建 arm64 + x86_64（`ONLY_ACTIVE_ARCH` 只在 Debug），所以建置比 Debug 久。
+- **詞庫備份**。`~/Library/Application Support/Switchless/` 的自訂詞與 `smart-english.txt` 原本是唯一一份，而且 `tmutil destinationinfo` 顯示**這台機器沒有設定任何 Time Machine 目的地**。新增 `scripts/backup_userdata.sh`：同步進主 repo 的 `userdata/`（private repo，個人詞彙不外洩），commit 就有版本歷史可以退回。`--diff` 看差異、`--restore` 寫回去（會要求打字確認才動）。
+
+**GitHub Actions 已在 fork repo 整個停用**（repo 層級設定，非改檔案，所以對上游的 diff 是零，不影響日後 rebase 上游）。原因：fork 繼承了上游六個 workflow，其中 Build 每次 push 跑兩個 macOS runner job 又**必定失敗**——`Missing package product 'SmartSwitchKit'`，因為 pbxproj 把 SmartSwitchKit 接成 local package 路徑 `../..`（本機是主 repo 根目錄，CI 上是 checkout 之外）。**這是兩個 repo 拆開的結構性後果，不是 rebrand 造成的**（rebrand 前那次 push 就同樣失敗）。私有 repo 的 macOS runner 是最貴的計費級距，等於每次 push 都在買一個必定失敗的紅叉。
+
+- **不建議為此合併兩個 repo**：那能根治路徑問題，但會犧牲 `vendor/McBopomofo` 的 `origin` 還指著上游、可以 rebase 上游的能力，那個能力比 CI 值錢。
+- 真要 CI 就留到公開前再處理：讓 workflow 同時 checkout 兩個 repo（需要 deploy key 存 secret），或用 submodule 接 SmartSwitchKit。
+- 把關仍然靠本機：每個 session 跑 SmartSwitchKit 42 + vendor 125 個測試。
+
 ## 新 bundle ID 的輸入法要登出才會出現（2026-08-04，rebrand 後實測）
 
 改名後 `Switchless.app` 裝好了、註冊了，但**系統設定的「+ 加入輸入方式」清單裡完全找不到「免切注音」**。逐項排除後的結論：**macOS 只在登入時掃描 `~/Library/Input Methods` 建立輸入法清單，新的 bundle ID 要登出再登入才會被系統收錄。**

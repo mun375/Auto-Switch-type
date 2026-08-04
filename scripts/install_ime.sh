@@ -20,14 +20,25 @@ DST="$HOME/Library/Input Methods/$APP"
 LEGACY="$HOME/Library/Input Methods/McBopomofo.app"
 LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-SRC="${1:-}"
-if [ -z "$SRC" ]; then
-    SRC=$(ls -dt "$HOME"/Library/Developer/Xcode/DerivedData/McBopomofo-*/Build/Products/Debug/"$APP" 2>/dev/null | head -1)
-fi
+# Release is what gets installed for daily use: the input method sits on the
+# path of every keystroke, and Debug means unoptimised Swift and C++ plus the
+# extra debug-dylib indirection. Pass "Debug" as $1 when debugging, or a full
+# path to an .app to install that instead.
+CONFIG="${1:-Release}"
+case "$CONFIG" in
+    Debug|Release)
+        SRC=$(ls -dt "$HOME"/Library/Developer/Xcode/DerivedData/McBopomofo-*/Build/Products/"$CONFIG"/"$APP" 2>/dev/null | head -1)
+        ;;
+    *)
+        SRC="$CONFIG"
+        CONFIG="(explicit path)"
+        ;;
+esac
 if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-    echo "error: no built $APP found; pass the path as \$1" >&2
+    echo "error: no $CONFIG build of $APP found; pass Debug, Release, or a path" >&2
     exit 1
 fi
+echo "config: $CONFIG"
 echo "source: $SRC"
 
 # Stop any running copy so the bundle can be replaced cleanly.
@@ -55,6 +66,14 @@ echo "=== registered copies ==="
 
 echo
 echo "Installed build $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$DST/Contents/Info.plist")."
+# A Debug bundle carries the debug dylib next to the stub executable; a Release
+# one does not. Worth stating outright, since installing Debug by accident is
+# silent and costs typing latency all day.
+if [ -e "$DST/Contents/MacOS/Switchless.debug.dylib" ]; then
+    echo "This is a DEBUG build — rerun without arguments to install Release."
+else
+    echo "This is a Release build."
+fi
 
 # The pre-rebrand fork has a different bundle ID, so it survives this install
 # and keeps showing up in the input menu. Removing it is a deliberate choice,
