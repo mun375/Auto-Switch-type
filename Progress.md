@@ -4,11 +4,11 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」實作完成（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」實作完成（2026-08-04，待 Ben 實測）**
-- **Repo**：`git@github.com:mun375/Auto-Switch-type.git`
-- **下個 session 待辦**：Ben 實測自訂英文詞庫＋補跑 commit 後反悔驗收清單第 4、7 條；通過後 Phase 3/4 下一項是改名 rebrand（Opus）。
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過（2026-08-04）**
+- **Repo**：`git@github.com:mun375/Auto-Switch-type.git`（private，push 不會觸發任何部署）
+- **下個 session 待辦**：補跑 commit 後反悔驗收清單第 4、7 條；下一項是改名 rebrand（Opus）。
 - **已知 bug**：無
-- **⚠️ 未 commit**：本 session 的改動（SmartSwitchKit、vendor fork、scripts/install_ime.sh、本文件）都還在工作區，Ben 說 commit 才 commit。
+- **vendor fork 是本機 git、無遠端**：`vendor/McBopomofo` 被 gitignore，分支 `smart-mixed-mode` 的 commit 只存在這台機器上。正式 fork repo 結構待 rebrand 時一併決定；在那之前這台機器的 vendor 目錄弄丟＝所有 IME 端改動弄丟。
 - **已知限制（v1 刻意保留）**：
   - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，Phase 3 再評估。
   - 游標不在行尾時智慧轉換自動停用。
@@ -39,7 +39,7 @@ Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是�
 | Phase 4 | 簽章公證 pkg + 發佈頁 | Opus |
 | 隨時 | 文件、小修、建置裝機 | Opus |
 
-## Phase 3：使用者自訂英文詞庫完成（2026-08-04，第八次 session；待 Ben 實測）
+## Phase 3：使用者自訂英文詞庫完成（2026-08-04，第八次 session；Ben 實測通過）
 
 Ben 可以自己列一份「這些字一律當英文」的清單，蓋過分類器的預設判斷。
 
@@ -54,16 +54,14 @@ Ben 可以自己列一份「這些字一律當英文」的清單，蓋過分類�
 - **驗證**：SmartSwitchKit 42 測試全過（36 → 42，新增 6 個）、vendor 125 測試全過、Debug build 成功並已裝機。
 - **新增 `scripts/install_ime.sh`**：複製建置產物到 `~/Library/Input Methods`，然後把**除了安裝版以外**的所有 McBopomofo.app 從 LaunchServices 解除註冊。以後裝機一律跑這支（見下方「輸入法從選單消失」）。
 
-**Ben 驗收清單**：
+**驗收結果（2026-08-04）**：
 
-1. 狀態列選 小麥注音 → 輸入法選單應出現「編輯智慧混打英文詞庫」（智慧混打開關要是開的）。
-2. 點它 → TextEdit 開啟 `smart-english.txt`，內容是中文說明模板。
-3. 先在 TextEdit 打 `ai`+空白 → 現在會出「摸」。
-4. 在詞庫檔加一行 `ai`、存檔（不要重開輸入法）→ 再打 `ai`+空白 → 出 `ai `；按 ↑ → 變「摸」；再按 ↑ → 變回 `ai `。
-5. 同樣方式加 `up` → `up`+空白 不再出「因」（翻掉預設政策）。
-6. 把該行刪掉存檔 → 行為立刻回復。
-7. log 應出現 `user English lexicon loaded: N word(s)`。
-8. 回歸：純中文長句、`hello`、`x.com`、數字直打不受影響。
+- ✅ 選單項出現、點擊建檔（`smart-english.txt` 以中文說明模板建立）。
+- ✅ 熱重載：加一行 `ai` 存檔後**不重開輸入法**，執行中的 IME 四秒內 log 出現 `user English lexicon loaded: 1 word(s)`。
+- ✅ 判決翻轉：拿磁碟上的實際檔案跑分類器，`ai` chinese→english（另一解讀保留 ㄇㄛ），`ui`/`up`/`hello`/`rup` 全部不動——沒有誤傷。
+- ✅ **Ben 實測打字：`ai`+空白 出 `ai`**。
+- 未跑：刪除詞條後回復、加 `up` 翻掉預設政策、長句回歸——邏輯與 `ai` 同一條路徑，風險低。
+- 備忘：AI 這邊的 TextEdit computer-use 存取被拒，實際敲鍵盤只能由 Ben 做；其餘環節都能從命令列驗。
 
 ## Phase 3：commit 後反悔完成（2026-08-04，第七次 session；待 Ben 實測）
 
