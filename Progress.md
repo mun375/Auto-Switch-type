@@ -16,6 +16,7 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
   - 把 vendor 的「Version Update API Test」標成停用，`xcodebuild test` 才不必加逾時參數（見已知 bug）。
   - 本檔 400 多行，遠超全域準則的 150 行上限，而且位置不是 `docs/PROGRESS.md`。建議搬家並把舊的 session 紀錄移到 `docs/log/`；同時把建置／測試／裝機指令整理進專案 `CLAUDE.md`（目前不存在）。
   - 實際使用一陣子後，把被誤切的英文字回報，用 `swift run -c release measure-boundary` 調規則。
+  - **隱私：輸入法的 log 會記下打的字**。`SmartClassifierBridge.swift` 用 `os_log` 的 `%{public}s`、`.default` 層級記錄 token 按鍵，這是從 Phase 2 就有的寫法，這次新增的 `boundary:` log 也照做。結果是英文 token 的原始按鍵（含 `hello` 這類內容）會明文留在系統 log 好幾天。建議改成 `%{private}s` 或 `.debug` 層級，或只在 Debug build 記錄。驗證方式改用 `log stream --level debug`（自動安全檢查在 2026-11-04 commit 時提出）。
   - 舊建置殘留 `vendor/McBopomofo/build/Debug/McBopomofo.app` 又被 LaunchServices 註冊回來（舊 bundle ID），可以刪掉。
 - **已知 bug**：
   - vendor 的 Swift Testing 測試「Version Update API Test」會一直等不到回應（不加逾時會讓整個 `xcodebuild test` 卡住）。原因推測是 rebrand 移除了 `UpdateInfoEndpoint`，回呼從此不會觸發，**與輸入功能無關**。目前跑測試要加 `-test-timeouts-enabled YES -default-test-execution-time-allowance 60`；之後可以把這個測試標成停用。
