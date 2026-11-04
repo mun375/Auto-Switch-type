@@ -87,6 +87,13 @@ if [ -d "$LEGACY" ]; then
     echo "  \"$LSR\" -u \"$LEGACY\" && rm -rf \"$LEGACY\""
 fi
 
+# Installing (and especially running vendor tests beforehand) can silently
+# drop the input method from the enabled list, so check instead of assuming.
+# A first install of a new bundle ID also lands here: it needs a logout first,
+# then the same re-add steps the warning prints.
 echo
-echo "First install: 系統設定 → 鍵盤 → 輸入來源「編輯…」→ 左下角 + → 繁體中文"
-echo "→ 加入「免切注音」與「免切注音（傳統）」，然後從選單列選用。"
+echo "=== enabled in the input menu? ==="
+if ! swift "$(dirname "$0")/check_ime_enabled.swift"; then
+    echo "(A first install of a new bundle ID also needs a logout before it shows up in that list.)"
+    exit 1
+fi

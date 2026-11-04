@@ -5,18 +5,40 @@ public enum Lexicon {
     /// Top-3000 most frequent English words (from the google-10000-english
     /// list, derived from the Google Web Trillion Word Corpus). This is the
     /// lexicon size Policy v0 was measured with.
-    public static let top3000: Set<String> = {
-        guard
-            let url = Bundle.module.url(
-                forResource: "english-top3000", withExtension: "txt"),
+    public static let top3000: Set<String> = Set(top3000Ranked)
+
+    /// The same list in frequency order (most frequent first).
+    public static let top3000Ranked: [String] = bundledLines("english-top3000")
+        .map { $0.lowercased() }
+
+    /// English words outside `top3000` that the space-split heuristic
+    /// (`BoundarySplitter.splitAtSpace`) would otherwise cut into a word plus
+    /// a syllable — "backup" = "back" + ㄧㄣ. Generated from google-10000 and
+    /// the system word list by `swift run gen-boundary-data`.
+    public static let noSplitWords: Set<String> = Set(bundledLines("english-nosplit"))
+
+    /// `Syllable.bopomofo` → relative frequency of the syllable in typed
+    /// Chinese, summed from McBopomofo's single-character unigrams. Generated
+    /// by `swift run gen-boundary-data`.
+    public static let syllableWeights: [String: Double] = {
+        var weights: [String: Double] = [:]
+        for line in bundledLines("syllable-weights") {
+            let fields = line.split(separator: "\t")
+            guard fields.count == 2, let w = Double(fields[1]) else { continue }
+            weights[String(fields[0])] = w
+        }
+        return weights
+    }()
+
+    private static func bundledLines(_ name: String) -> [String] {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "txt"),
             let text = try? String(contentsOf: url, encoding: .utf8)
         else {
-            assertionFailure("english-top3000.txt missing from bundle")
+            assertionFailure("\(name).txt missing from bundle")
             return []
         }
-        return Set(
-            text.split(separator: "\n").map { $0.lowercased() }.filter { !$0.isEmpty })
-    }()
+        return text.split(separator: "\n").map(String.init).filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    }
 
     /// Parses a user-maintained word list: one entry per line, `#` starts a
     /// comment, blank lines ignored. Only the first whitespace-separated field

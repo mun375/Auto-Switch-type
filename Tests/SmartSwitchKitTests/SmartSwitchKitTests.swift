@@ -308,3 +308,60 @@ final class SyllableTableTests: XCTestCase {
         XCTAssertFalse(SyllableTable.isValid(initial: "ㄅ", rime: ""))
     }
 }
+
+final class BoundarySplitterTests: XCTestCase {
+    let splitter = BoundarySplitter.bundled()
+
+    func testToneKeySplitsEnglishWordFromSyllable() {
+        // hello + su3 (ㄋㄧˇ 你)
+        let split = splitter.splitBeforeTone(keys: "hellosu", toneKey: "3")
+        XCTAssertEqual(split?.englishLength, 5)
+        XCTAssertEqual(split?.syllable.bopomofo, "ㄋㄧˇ")
+    }
+
+    func testFrequencyScorePicksTheOverThey() {
+        // the + y94 (ㄗㄞˋ 在), not they + 94 (ㄞˋ 愛)
+        XCTAssertEqual(splitter.splitBeforeTone(keys: "they9", toneKey: "4")?.englishLength, 3)
+    }
+
+    func testAbbreviationsDoNotCountAsEnglishWords() {
+        // "wi" is in the top-3000 list but is not a word: win7 stays intact.
+        XCTAssertNil(splitter.splitBeforeTone(keys: "win", toneKey: "7"))
+        XCTAssertNil(splitter.splitBeforeTone(keys: "ar", toneKey: "6"))
+    }
+
+    func testVersionNumbersStayWhole() {
+        XCTAssertNil(splitter.splitAtSpace(keys: "win10"))  // not win + ㄅㄢ
+        XCTAssertNil(splitter.splitAtSpace(keys: "html5"))  // not html + ㄓ
+    }
+
+    func testNonToneDigitNeverSplits() {
+        XCTAssertNil(splitter.splitBeforeTone(keys: "hellosu", toneKey: "5"))
+    }
+
+    func testUnknownEnglishPartDoesNotSplit() {
+        XCTAssertNil(splitter.splitBeforeTone(keys: "xyzzysu", toneKey: "3"))
+    }
+
+    func testSpaceSplitsWordFromFirstToneSyllable() {
+        // hello + ej (ㄍㄨ 姑) + space
+        let split = splitter.splitAtSpace(keys: "helloej")
+        XCTAssertEqual(split?.englishLength, 5)
+        XCTAssertEqual(split?.syllable.bopomofo, "ㄍㄨ")
+    }
+
+    func testSpaceNeverSplitsKnownWords() {
+        XCTAssertNil(splitter.splitAtSpace(keys: "hello"))  // top 3000
+        XCTAssertNil(splitter.splitAtSpace(keys: "backup"))  // back + ㄧㄣ, protected
+        XCTAssertNil(splitter.splitAtSpace(keys: "startup"))
+    }
+
+    func testUserWordsAreProtectedAndCountAsEnglish() {
+        let custom = BoundarySplitter.bundled(userEnglish: ["openai", "ai"])
+        XCTAssertNotNil(splitter.splitAtSpace(keys: "openai"))
+        XCTAssertNil(custom.splitAtSpace(keys: "openai"))
+        // "ai" is not a lexicon word, but the user listed it.
+        XCTAssertNil(splitter.splitBeforeTone(keys: "aisu", toneKey: "3"))
+        XCTAssertEqual(custom.splitBeforeTone(keys: "aisu", toneKey: "3")?.englishLength, 2)
+    }
+}

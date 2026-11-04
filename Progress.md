@@ -6,13 +6,19 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
 
 ## 專案狀態
 
-- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過、第三項「改名 rebrand」✅ 已裝機運作中（2026-08-04）**。定位轉為自用優先（見下節），Phase 4 無限期延後。
+- **階段**：Phase 0 ✅、Phase 1 ✅、Phase 2 ✅（掛鉤 A/B/C、數字直打、Preferences UI）、**Phase 3 第一項「commit 後反悔」（Ben 初步實測 OK）、第二項「使用者自訂英文詞庫」✅ Ben 實測通過、第三項「改名 rebrand」✅ 已裝機運作中（2026-08-04）、第四項「英轉中自動切分」✅ Ben 實測通過（2026-11-04）**。定位轉為自用優先（見下節），Phase 4 無限期延後。
 - **Repo**：`git@github.com:mun375/Auto-Switch-type.git`（private，push 不會觸發任何部署）
 - **目前執行中**：`~/Library/Input Methods/Switchless.app`，**Release build**（universal，無 debug dylib），已從系統設定加入輸入來源並可正常選用。改名前那份 `McBopomofo.app` 已於 2026-08-04 移除並解除註冊，LaunchServices 現在只剩安裝版一份。
 - **下個 session 待辦（Ben 指定順延）**：
   1. **rebrand 的打字驗收**——見下方「Ben 驗收清單」第 2–6 條（選單無「檢查更新」、偏好設定面板、關於視窗版權兩行、詞庫路徑指向 Switchless、`up`+空白→因與 ↑ 切換）。**第 1 條「加輸入來源」已完成不必再做。** 這輪裝的是新編的 Release build，所以打字行為值得完整走一次。
   2. 補跑「commit 後反悔」驗收清單第 4、7 條（誤攔一般 ↑、終端機安全放行）。
-- **已知 bug**：無
+- **下次建議**（2026-11-04 第十次 session 收尾）：
+  - 把 vendor 的「Version Update API Test」標成停用，`xcodebuild test` 才不必加逾時參數（見已知 bug）。
+  - 本檔 400 多行，遠超全域準則的 150 行上限，而且位置不是 `docs/PROGRESS.md`。建議搬家並把舊的 session 紀錄移到 `docs/log/`；同時把建置／測試／裝機指令整理進專案 `CLAUDE.md`（目前不存在）。
+  - 實際使用一陣子後，把被誤切的英文字回報，用 `swift run -c release measure-boundary` 調規則。
+  - 舊建置殘留 `vendor/McBopomofo/build/Debug/McBopomofo.app` 又被 LaunchServices 註冊回來（舊 bundle ID），可以刪掉。
+- **已知 bug**：
+  - vendor 的 Swift Testing 測試「Version Update API Test」會一直等不到回應（不加逾時會讓整個 `xcodebuild test` 卡住）。原因推測是 rebrand 移除了 `UpdateInfoEndpoint`，回呼從此不會觸發，**與輸入功能無關**。目前跑測試要加 `-test-timeouts-enabled YES -default-test-execution-time-allowance 60`；之後可以把這個測試標成停用。
 - **殘留物（無害，但知道一下）**：`vendor/McBopomofo/build/Debug/McBopomofo.app` 是 Phase 1 留下的舊建置（**舊 bundle ID**），已解除 LaunchServices 註冊、目前是死的，但它正是當初害輸入法從選單列消失的那類東西。`build/` 被 gitignore，要刪隨時可刪。
 - **兩個 repo**（都是 private，push 都不會觸發部署）：
   - `git@github.com:mun375/Auto-Switch-type.git` — 主專案（SmartSwitchKit、scripts、文件）。分支 `main`。
@@ -20,10 +26,56 @@ macOS 版「華碩智慧輸入法」概念：使用者不需按 Shift 切換中�
   - `vendor/McBopomofo` 在主 repo 裡仍是 gitignore，兩個 repo 各自獨立 commit／push。**改了 IME 端的東西要記得 `git -C vendor/McBopomofo push fork smart-mixed-mode`。**
   - 2026-08-04 建立時把原本的 shallow clone `fetch --unshallow` 補成完整歷史（否則 GitHub 拒收），`.git` 從 3.3M 變 85M。上游 MIT 版權聲明原封保留。
 - **已知限制（v1 刻意保留）**：
-  - 英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——**英轉中必須打空白分詞**（Ben 實測確認此體感）。自動偵測英轉中邊界是進階題，Phase 3 再評估。
+  - ~~英文 token 一旦成立，後續按鍵都當英文直到空白/Enter——英轉中必須打空白分詞。~~ **2026-11-04 已解決大部分**：英轉中自動切分（見「Phase 3：英轉中自動切分」一節）。剩下的情況：英文字不在詞庫裡、英文後面第一個中文字是一聲且全由數字鍵組成（例如「班」10），以及 Enter（Enter 不會切分）。
   - 游標不在行尾時智慧轉換自動停用。
   - 英文 token 中的 `/` 等少數符號若無半形 reading 會 fallback 到通用查找；`,` `.` `;` `/` `-` 已有明確對應表（shift 字元命名問題，見下）。
   - 空白定案後的 ↑ 切換在「下一鍵之前」有效；**Enter commit 後仍可再按 ↑ 反悔一次（2026-08-04 新增，可連按來回切換）**，但打了其他鍵就真正定案。commit 中間位置的 token（早已被後續按鍵定案者）不可反悔。
+
+## Phase 3：英轉中自動切分（2026-11-04，第十次 session；Ben 實測通過）
+
+Ben 的困擾：打完英文一定要按空白或 Enter 才能接中文（`hellosu3` 會變成 `hellosu3`，不是「hello你」）。華碩智慧輸入法沒有公開演算法，只能做出同樣的效果。
+
+**做法**（SmartSwitchKit `BoundarySplitter`，KeyHandler 在英文 token 分支呼叫）：
+
+- **方案 A：聲調數字（3/4/6/7）觸發**。英文 token 裡按到聲調數字時，往回找切點：前段是英文字、後段剛好是一個完整音節。涵蓋 81% 的中文字（一聲以外）。
+- **方案 B：空白觸發**（補一聲）。整個 token 不是已知英文字時，同樣找「英文字＋一聲音節」。
+- **英文字的認定**：top-3000 詞庫裡至少 3 個字母的字、兩字母白名單（to/of/is/we/ok/tv…），或使用者自訂英文詞庫的字。top-3000 裡混了大量縮寫（ca、st、wi），不排除會把 `cap`、`win7` 切開。
+- **多種切法時**：英文頻率（Zipf，1/名次）× 音節頻率（McBopomofo 單字 unigram 加總）取最高。這條把錯誤率從 2.1% 壓到 0.2%（`the`＋在 而不是 `they`＋愛）。
+- **空白的保護清單**：`english-nosplit.txt`，是 google-10000 和系統字典裡會被 B 誤切的 1419 個字（backup、startup、signup、euro…），加上 top-3000 和使用者詞庫。
+- **空白時，後段全是數字就不切**（`win10`、`html5`、`ios18` 的數字剛好拼得出 ㄅㄢ、ㄓ、ㄅㄚ）。這條只套在 B：套在 A 會讓涵蓋率掉 4 個百分點（至 54、大 284 都是純數字鍵）。
+- **↑ 可以復原**：切完下一鍵之前按 ↑ 回到原本的英文，再按一次切回中文。A 復原後英文 token 會繼續（`web3` 之後還能接著打英文）。B 沿用掛鉤 C 的空白紀錄，所以 Enter 之後的「commit 後反悔」也能用。實作上是把掛鉤 C 的紀錄一般化：多一個 `_smartSpaceTokenAddsSpace`（A 是 NO）和 `_smartSplitEnglishKeys`。
+
+**資料與工具**（主 repo）：
+
+- `swift run -c release gen-boundary-data`：重新產生 `syllable-weights.txt` 和 `english-nosplit.txt`。**改詞庫、音節表或切分規則後必須重跑**，否則保護清單會過期。
+- `swift run -c release measure-boundary`：量測正在用的切分器，模擬按鍵序列，不是真的打字。
+
+**量測結果**（`measure-boundary`，2026-11-04）：
+
+| 項目 | 結果 |
+|---|---|
+| A：英文字＋帶聲調中文字 | 正確 98.76%、切錯 0.20%、沒切 1.05% |
+| B：英文字＋一聲字＋空白 | 正確 92.07%、切錯 0.23%、沒切 7.70%（沒切＝退回原本的英文＋空白） |
+| 誤切的樣本詞 | 60 個裡有 5 個：`web3`、`usb3`、`mark4`、`openai`、`costco`。補救：↑ 復原，或加進自訂英文詞庫 |
+| google 10k 被 B 誤切 | 0%，但這是**保護清單本身就從這份字表產生**的結果，不算獨立證據 |
+
+**驗證結果（AI 實際跑過）**：
+
+- ✅ SmartSwitchKit 51 個測試全過（原 42 個加上切分器 9 個）。
+- ✅ vendor 131 個 XCTest 全過（原 125 個加上 6 個切分整合測試：`hellosu3cl3`→「hello你好」、↑ 來回切換、復原後繼續打英文、`win7` 不切、`helloej`+空白、`backup `/`hello ` 不切）。log 裡看得到 `boundary: "hellosu" + 3 → "hello" | ㄋㄧˇ`。
+- ✅ Release build 成功，已裝到 `~/Library/Input Methods/Switchless.app`（build 2264）；兩個新資料檔在 bundle 裡，LaunchServices 只留安裝版一份。
+- ✅ 跑完測試後 `SmartMixedModeEnabled` 仍是 1，`backup_userdata.sh --diff` 顯示詞庫 `identical`。
+- ✅ **Ben 實際打字驗收 OK**（2026-11-04）。
+- **未驗證**：真實中英混打語料的切錯率（量測權重假設英文字和中文字彼此獨立）。
+
+**Ben 驗收清單**：
+
+1. `hellosu3cl3` → 「hello你好」，中間不用按空白。
+2. 切完馬上按 ↑ → 變回 `hellosu3`，再按 ↑ → 「hello你」。
+3. `helloej` + 空白 → 「hello」+ 一個 ㄍㄨ 的字；按 ↑ → `helloej `。
+4. 不該切的：`win7`、`win10 `、`backup `、`mp3`、`iphone16`。
+5. `openai` + 空白會被切成 open+摸 → 把 `openai` 加進「編輯智慧混打英文詞庫」，存檔後再打一次，應該不切。
+6. 打字延遲沒有變差（每個聲調鍵和空白都多一次切分搜尋）。
 
 ## 定位改為「自用優先、暫不公開」（2026-08-04，Ben 決策）
 
@@ -73,7 +125,8 @@ Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是�
 - **修法**：把非安裝版的路徑 `lsregister -u` 解除註冊、只留 `~/Library/Input Methods/McBopomofo.app` 再 `lsregister -f`。已寫成 `scripts/install_ime.sh`，之後裝機一律跑它。
 - **殘留**：`TISEnableInputSource` 從命令列腳本呼叫**回傳 noErr 但不會寫進系統啟用清單**（跨程序不生效），所以最後一步 Ben 要自己在系統設定裡加：
   **系統設定 → 鍵盤 → 輸入來源「編輯…」→ 左下角 `+` → 繁體中文 → 小麥注音（含「小麥注音-精簡模式」共兩項）→ 加入**。加完狀態列選單就會出現。
-- 診斷指令備忘：`defaults read com.apple.HIToolbox AppleEnabledInputSources`（系統真正啟用的清單）；`lsregister -dump | grep McBopomofo.app`（看註冊了幾份）。TIS API 自己回報的 `IsEnabled` 只反映呼叫端程序的快取，不可信。
+- **2026-11-04 再發生一次**：跑完 `xcodebuild test`（測試主程式是建置資料夾那份同 bundle ID 的 Switchless.app），裝完新版後選單列又看不到。Ben 在系統設定重新加入後恢復，**不必登出**。已升級成腳本：`scripts/install_ime.sh` 結尾會自動跑 `scripts/check_ime_enabled.swift`，免切注音不在啟用清單時印警告和重新加入步驟，並以 exit 1 結束。跑完 vendor 測試後也可以單獨跑 `swift scripts/check_ime_enabled.swift`。
+- 診斷指令備忘：`defaults read com.apple.HIToolbox AppleEnabledInputSources` **不是即時的**（2026-11-04 實測：系統設定和 TIS 都已顯示啟用，這份清單仍然沒有）。要確認啟用狀態，用新程序呼叫 `TISCreateInputSourceList(nil, false)` 列出已啟用的輸入法，或直接看系統設定；`lsregister -dump | grep McBopomofo.app`（看註冊了幾份）。TIS API 自己回報的 `IsEnabled` 只反映呼叫端程序的快取，不可信。
 
 ## 模型分工表（Ben 用：session 該叫誰）
 
@@ -84,6 +137,7 @@ Ben 回報狀態列的輸入法選單裡看不到小麥注音。**根因不是�
 | ✅ 2026-08-04 | 誤判修正 UX（commit 後反悔、tooltip） | Fable 5（已完成，待實測） |
 | ✅ 2026-08-04 | 使用者自訂英文詞庫 | Opus（已完成，Ben 實測通過） |
 | ✅ 2026-08-04 | 改名 rebrand（名稱/bundle ID/圖示/在地化；尊重上游、保留 MIT 版權聲明） | Opus（已完成，待實測） |
+| ✅ 2026-11-04 | 英轉中自動切分（方案 A/B） | Opus（Ben 指定直接做；Ben 實測通過） |
 | 下一次 | 正式 App icon 設計（rebrand 只做了換色佔位） | Opus |
 | Phase 4 | 詞典換 SCOWL + 重跑準確率 | Opus |
 | Phase 4 | 簽章公證 pkg + 發佈頁（含自建更新端點） | Opus |
